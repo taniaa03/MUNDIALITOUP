@@ -64,6 +64,16 @@ def reemplazar_nulos_texto_por_desconocido(df):
             print(f"  📝 Nulos en columna de texto '{col}' → 'desconocido'")
     return df
 
+def limpiar_goal_timings_vacio(df):
+    """Deja vacías (cadena '') las celdas en columnas de tiempos de goles que no tengan datos"""
+    for col in df.columns:
+        if 'goal_timings' in col:
+            # Reemplazar 'desconocido', N/A, espacios, nulos por cadena vacía
+            df[col] = df[col].replace(['desconocido', 'N/A', '', ' '], '')
+            df[col] = df[col].fillna('')
+            print(f"  ⚽ Columna '{col}': valores vacíos o nulos → celda vacía ('' )")
+    return df
+
 def estandarizar_nombres_columnas(df):
     nuevos = {}
     for col in df.columns:
@@ -91,14 +101,14 @@ def procesar_todo(ruta_data='data', ruta_salida='data/processed'):
         raise FileNotFoundError("No se encontraron enfrentamientos.xlsx o equipos.xlsx en la carpeta data/")
 
     print(f"📂 Leyendo {enf_path} ...")
-    df_enf = pd.read_excel(enf_path)  # si es CSV usa pd.read_csv
+    df_enf = pd.read_excel(enf_path)
     print(f"📂 Leyendo {eq_path} ...")
     df_eq = pd.read_excel(eq_path)
 
     print(f"Original: enfrentamientos {df_enf.shape}, equipos {df_eq.shape}")
 
     # ---- LIMPIEZA ----
-    # 1. Reemplazar nulos numéricos por 0 (antes de nada)
+    # 1. Reemplazar nulos numéricos por 0
     df_enf = reemplazar_nulos_numericos_por_cero(df_enf)
     df_eq = reemplazar_nulos_numericos_por_cero(df_eq)
 
@@ -110,13 +120,16 @@ def procesar_todo(ruta_data='data', ruta_salida='data/processed'):
     df_enf = estandarizar_nombres_columnas(df_enf)
     df_eq = estandarizar_nombres_columnas(df_eq)
 
-    # 4. Reemplazar nulos de texto restantes
+    # 4. Reemplazar nulos de texto restantes por "desconocido"
     df_enf = reemplazar_nulos_texto_por_desconocido(df_enf)
     df_eq = reemplazar_nulos_texto_por_desconocido(df_eq)
 
+    # 5. Dejar vacías las columnas de tiempos de goles (home_team_goal_timings, away_team_goal_timings)
+    df_enf = limpiar_goal_timings_vacio(df_enf)
+
     print(f"Final: enfrentamientos {df_enf.shape}, equipos {df_eq.shape}")
 
-    # Guardar nombres de las blas son
+    # Guardar archivos
     enf_csv = os.path.join(ruta_salida, 'enfrentamientos_procesado.csv')
     eq_csv = os.path.join(ruta_salida, 'equipos_procesado.csv')
     df_enf.to_csv(enf_csv, index=False)
@@ -126,7 +139,6 @@ def procesar_todo(ruta_data='data', ruta_salida='data/processed'):
     equipos2 = df_eq
 
     print(f"✅ Datos guardados en {ruta_salida}")
-    #nombre de las tablas :D
     return enfrentamientos2, equipos2
 
 if __name__ == "__main__":
