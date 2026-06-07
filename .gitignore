@@ -1,0 +1,37 @@
+# Entorno virtual
+venv/
+env/
+.venv/
+
+# Archivos de caché de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Datos originales (Excel grandes, no se suben)
+data/*.xlsx
+data/*.xls
+
+# Datos procesados (se generan automáticamente, no es necesario subirlos)
+data/processed/*.csv
+data/processed/*.xlsx
+
+# Documentos personales o parciales (opcional)
+docs/parcial.docx
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Configuraciones locales de Streamlit (si usas secretos)
+.streamlit/secrets.toml
+
+# Archivos de editor (VSCode, PyCharm, etc.)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de log o temporales
+*.log
+*.tmp
