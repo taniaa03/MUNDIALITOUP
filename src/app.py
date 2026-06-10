@@ -161,33 +161,77 @@ def chart_card(title: str, series: pd.Series, variant: str = "bar") -> str:
     data = series.dropna()
     if data.empty:
         return f'<div class="viz-card"><h3>{escape(title)}</h3><div class="empty-mini">Sin datos</div></div>'
-    data = data.head(8)
+    if variant != "line":
+        data = data.head(8)
+    if variant == "pie":
+        palette = ["#0057D8", "#00B6D6", "#D6A329", "#08A045", "#0B2454", "#D72638", "#6B5DD3", "#F28C28"]
+        total = float(data.sum()) or 1.0
+        current = 0.0
+        slices = []
+        legend = []
+        for index, (label, value) in enumerate(data.items()):
+            color = palette[index % len(palette)]
+            pct = (float(value) / total) * 100
+            end = current + pct
+            slices.append(f"{color} {current:.2f}% {end:.2f}%")
+            legend.append(
+                f'<div class="pie-legend-row"><i style="background:{color}"></i>'
+                f'<span>{escape(str(label))}</span><strong>{fmt(value)} ({pct:.1f}%)</strong></div>'
+            )
+            current = end
+        return (
+            f'<div class="viz-card"><h3>{escape(title)}</h3><div class="pie-layout">'
+            f'<div class="pie-chart" style="background:conic-gradient({", ".join(slices)})">'
+            f'<div><strong>{fmt(data.sum())}</strong><span>jugadores</span></div></div>'
+            f'<div class="pie-legend">{"".join(legend)}</div></div></div>'
+        )
     max_value = float(data.max()) if float(data.max()) else 1.0
     if variant == "line":
         values = [float(v) for v in data.tolist()]
-        max_v = max(values) or 1.0
-        min_v = min(values)
-        span = max(max_v - min_v, 1.0)
+        axis_min = float(int(min(values)))
+        axis_max = float(int(max(values)) + 1)
+        span = max(axis_max - axis_min, 1.0)
         points = []
-        width = 320
+        width = max(400, len(values) * 48)
         height = 120
+        plot_left = 30
+        plot_right = 22
+        plot_top = 14
+        plot_bottom = 90
+        data_left = plot_left + 18
+        x_labels = []
         for index, value in enumerate(values):
-            x = 18 + (index / max(len(values) - 1, 1)) * (width - 36)
-            y = 16 + (1 - ((value - min_v) / span)) * (height - 32)
+            x = data_left + (index / max(len(values) - 1, 1)) * (width - data_left - plot_right)
+            y = plot_top + (1 - ((value - axis_min) / span)) * (plot_bottom - plot_top)
             points.append(f"{x:.1f},{y:.1f}")
-        labels = "".join(
-            f'<span>{escape(str(label))}</span>' for label in data.index.astype(str).tolist()
-        )
+            x_labels.append(
+                f'<text class="axis-x-value" x="{x:.1f}" y="112">'
+                f'{escape(str(data.index[index]))}</text>'
+            )
+        y_axis = []
+        for tick in range(int(axis_min), int(axis_max) + 1):
+            y = plot_top + (1 - ((tick - axis_min) / span)) * (plot_bottom - plot_top)
+            y_axis.append(
+                f'<line class="axis-grid" x1="{plot_left}" y1="{y:.1f}" x2="{width - plot_right}" y2="{y:.1f}"></line>'
+                f'<text class="axis-value" x="{plot_left - 9}" y="{y + 3.5:.1f}">{tick}</text>'
+            )
         circles = []
-        for point in points:
+        for point, value in zip(points, values):
             cx, cy = point.split(",")
-            circles.append(f'<circle cx="{cx}" cy="{cy}" r="4"></circle>')
+            label_y = max(13.0, float(cy) - 9)
+            circles.append(
+                f'<circle cx="{cx}" cy="{cy}" r="4"></circle>'
+                f'<text class="line-value" x="{cx}" y="{label_y:.1f}">{fmt(value)}</text>'
+            )
         return (
             f'<div class="viz-card"><h3>{escape(title)}</h3>'
-            f'<svg class="line-viz" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
+            f'<svg class="line-viz" viewBox="0 0 {width} {height}" preserveAspectRatio="xMidYMid meet">'
+            f'{"".join(y_axis)}'
+            f'<line class="axis-line" x1="{plot_left}" y1="{plot_top}" x2="{plot_left}" y2="{plot_bottom}"></line>'
             f'<polyline points="{" ".join(points)}"></polyline>'
             f'{"".join(circles)}'
-            f'</svg><div class="viz-labels">{labels}</div></div>'
+            f'{"".join(x_labels)}'
+            f'</svg></div>'
         )
     rows = []
     for label, value in data.items():
@@ -257,10 +301,14 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
     hero_uri = asset_data_uri("assets/branding/mundialito_hero.png")
     st.markdown(
         f"""
-        <section class="home-hero" style="--hero-image: url('{hero_uri}')">
+        <section class="home-hero">
+            <img class="home-hero-bg" src="{hero_uri}" alt="Portada Mundialito UP 2026" />
             <div>
                 <div class="kicker">Portada oficial del torneo</div>
-                <h1>Mundialito UP 2026</h1>
+                <h1>
+                    <span style="display:block; white-space:nowrap;">Mundialito UP</span>
+                    <span style="display:block;">2026</span>
+                </h1>
                 <p>Fixture, selecciones, sedes y camino al título en una experiencia deportiva interactiva.</p>
             </div>
             <div class="hero-kpis">
@@ -284,14 +332,18 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
     st.markdown(
         '<div class="viz-grid">'
         + chart_card("Partidos por ciudad", partidos_sede)
-        + chart_card("Jugadores por confederacion", jugadores_conf)
-        + chart_card("Distribucion de posiciones", posiciones)
+        + chart_card("Jugadores por confederacion", jugadores_conf, "horizontal")
+        + '<div style="grid-column:1 / -1;">'
+        + chart_card("Distribucion de posiciones", posiciones, "pie")
+        + '</div>'
+        + '<div style="grid-column:1 / -1;">'
         + chart_card("Edad promedio por grupo", edad_grupo, "line")
+        + '</div>'
         + '</div>',
         unsafe_allow_html=True,
     )
 
-    render_section_head("Partidos destacados", "primeros cruces del fixture")
+    render_section_head("Próximos partidos", "primeros cruces del fixture")
     featured = proximos_partidos(fixture, 4)
     cols = st.columns(4)
     for idx, (_, row) in enumerate(featured.iterrows()):
@@ -326,17 +378,18 @@ def render_partidos(datos: dict[str, pd.DataFrame]) -> None:
     fixture = datos["fact_fixture"]
     filtros = opciones_filtros(fixture, datos["dataset_dashboard"])
     render_section_head("Partidos", "fixture filtrable y previa inmediata")
-    f1, f2, f3 = st.columns(3)
-    f4, f5, f6 = st.columns(3)
-    grupo = f1.selectbox("Grupo", filtros["grupos"])
-    pais = f2.selectbox("País", filtros["paises"])
-    fecha = f3.selectbox("Fecha", filtros["fechas"])
-    ciudad = f4.selectbox("Ciudad", filtros["ciudades"])
-    estadio = f5.selectbox("Estadio", filtros["estadios"])
-    fase = f6.selectbox("Fase", filtros["fases"])
-    filtered = filtrar_fixture(fixture, grupo, pais, fecha, ciudad, estadio, fase)
+    grupo = st.selectbox("Grupo", filtros["grupos"])
+    filtered = filtrar_fixture(
+        fixture,
+        grupo,
+        "Todos",
+        "Todas",
+        "Todas",
+        "Todos",
+        "Todas",
+    )
 
-    render_section_head("Partidos recientes", "primeros registros cargados")
+    render_section_head("Próximos partidos", "primeros registros cargados")
     recent_cols = st.columns(4)
     for idx, (_, row) in enumerate(proximos_partidos(filtered if not filtered.empty else fixture, 4).iterrows()):
         with recent_cols[idx % 4]:
