@@ -1485,6 +1485,32 @@ def apply_global_styles() -> None:
             background: linear-gradient(135deg, var(--blue), var(--ink));
         }
 
+        [data-testid="stMetric"] {
+            min-height: 112px;
+            padding: 16px 18px;
+            border-radius: 16px;
+            background: #FFFFFF;
+            border: 1px solid rgba(160,178,205,.86);
+            box-shadow: 0 16px 34px rgba(6,20,46,.10);
+        }
+
+        [data-testid="stMetricLabel"] p {
+            color: var(--muted) !important;
+            font-weight: 900 !important;
+            text-transform: uppercase;
+            font-size: .78rem !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: var(--ink) !important;
+            font-family: "Barlow Condensed", sans-serif;
+            font-weight: 900;
+        }
+
+        [data-testid="stMetricValue"] div {
+            color: var(--ink) !important;
+        }
+
         @media (max-width: 1050px) {
             .match-centre,
             .three-grid,
