@@ -729,13 +729,22 @@ def apply_global_styles() -> None:
             color: #FFFFFF;
             background:
                 linear-gradient(90deg, rgba(4,14,34,.92) 0%, rgba(4,14,34,.78) 36%, rgba(4,14,34,.26) 68%, rgba(4,14,34,.1) 100%),
-                var(--hero-image),
                 linear-gradient(135deg, var(--blue), var(--ink));
-            background-size: cover;
-            background-position: center;
             box-shadow: 0 30px 80px rgba(6,20,46,.18);
             position: relative;
             overflow: hidden;
+        }
+
+        .home-hero > img.home-hero-bg {
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            object-fit: cover !important;
+            object-position: center !important;
+            z-index: 0 !important;
         }
 
         .home-hero:before {
@@ -743,24 +752,40 @@ def apply_global_styles() -> None:
             position: absolute;
             inset: 0;
             opacity: .10;
+            z-index: 2;
             background-image:
                 linear-gradient(rgba(255,255,255,.46) 1px, transparent 1px),
                 linear-gradient(90deg, rgba(255,255,255,.46) 1px, transparent 1px);
             background-size: 46px 46px;
         }
 
-        .home-hero > * {
-            position: relative;
+        .home-hero:after {
+            content: "";
+            position: absolute;
+            inset: 0;
             z-index: 1;
+            background: linear-gradient(90deg, rgba(4,14,34,.94) 0%, rgba(4,14,34,.78) 38%, rgba(4,14,34,.28) 72%, rgba(4,14,34,.12) 100%);
+        }
+
+        .home-hero > div {
+            position: relative;
+            z-index: 3;
         }
 
         .home-hero h1 {
+            width: fit-content;
+            max-width: 100%;
             margin: 8px 0 12px;
             color: #FFFFFF;
-            font-size: clamp(3.4rem, 8vw, 7rem);
-            line-height: .8;
+            font-size: clamp(2.8rem, 5vw, 4.5rem);
+            line-height: .86;
             font-weight: 900;
             text-transform: uppercase;
+            letter-spacing: -.025em;
+        }
+
+        .home-hero h1 span {
+            display: block;
         }
 
         .home-hero p {
@@ -821,6 +846,15 @@ def apply_global_styles() -> None:
             margin-bottom: 22px;
         }
 
+        .viz-grid > div > .viz-card {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .viz-grid > div:last-child .line-viz {
+            height: 260px;
+        }
+
         .viz-card {
             min-height: 260px;
             padding: 18px;
@@ -878,9 +912,79 @@ def apply_global_styles() -> None:
             background: linear-gradient(90deg, var(--blue), var(--gold));
         }
 
+        .pie-layout {
+            display: grid;
+            grid-template-columns: minmax(150px, .8fr) minmax(180px, 1.2fr);
+            gap: 20px;
+            align-items: center;
+            min-height: 190px;
+        }
+
+        .pie-chart {
+            width: 170px;
+            aspect-ratio: 1;
+            display: grid;
+            place-items: center;
+            margin: auto;
+            border-radius: 50%;
+            box-shadow: 0 16px 34px rgba(6,20,46,.16);
+        }
+
+        .pie-chart > div {
+            width: 52%;
+            aspect-ratio: 1;
+            display: grid;
+            place-content: center;
+            border-radius: 50%;
+            text-align: center;
+            background: #FFFFFF;
+            box-shadow: inset 0 0 0 1px #D8E3F1;
+        }
+
+        .pie-chart strong {
+            color: var(--ink);
+            font-family: "Barlow Condensed", sans-serif;
+            font-size: 1.65rem;
+            line-height: .9;
+        }
+
+        .pie-chart span {
+            color: var(--muted);
+            font-size: .62rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .pie-legend {
+            display: grid;
+            gap: 8px;
+        }
+
+        .pie-legend-row {
+            display: grid;
+            grid-template-columns: 12px minmax(0,1fr) auto;
+            gap: 8px;
+            align-items: center;
+            color: var(--ink);
+            font-size: .72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .pie-legend-row i {
+            width: 12px;
+            height: 12px;
+            border-radius: 4px;
+        }
+
+        .pie-legend-row strong {
+            color: var(--muted);
+            font-size: .68rem;
+        }
+
         .line-viz {
             width: 100%;
-            height: 150px;
+            height: 190px;
             display: block;
             border-radius: 18px;
             background:
@@ -903,6 +1007,44 @@ def apply_global_styles() -> None:
             fill: var(--gold);
             stroke: #FFFFFF;
             stroke-width: 2;
+        }
+
+        .line-viz .line-value {
+            fill: var(--ink);
+            font-family: "Barlow", sans-serif;
+            font-size: 9.5px;
+            font-weight: 900;
+            text-anchor: middle;
+            paint-order: stroke;
+            stroke: #FFFFFF;
+            stroke-width: 3px;
+            stroke-linejoin: round;
+        }
+
+        .line-viz .axis-grid {
+            stroke: rgba(11,36,84,.13);
+            stroke-width: 1;
+        }
+
+        .line-viz .axis-line {
+            stroke: var(--muted);
+            stroke-width: 1.25;
+        }
+
+        .line-viz .axis-value {
+            fill: var(--ink);
+            font-family: "Barlow Condensed", sans-serif;
+            font-size: 11px;
+            font-weight: 900;
+            text-anchor: end;
+        }
+
+        .line-viz .axis-x-value {
+            fill: var(--ink);
+            font-family: "Barlow Condensed", sans-serif;
+            font-size: 11px;
+            font-weight: 900;
+            text-anchor: middle;
         }
 
         .viz-labels {
@@ -1386,12 +1528,18 @@ def apply_global_styles() -> None:
                 min-height: 430px;
                 padding: 22px;
             }
+            .home-hero h1 {
+                font-size: clamp(2.35rem, 10.5vw, 3.6rem);
+            }
             .compare-row {
                 grid-template-columns: 1fr;
             }
             .compare-row span,
             .compare-row strong:last-child {
                 text-align: left;
+            }
+            .pie-layout {
+                grid-template-columns: 1fr;
             }
         }
         </style>
