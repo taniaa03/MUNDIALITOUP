@@ -580,6 +580,20 @@ def procesar_mundial() -> dict[str, pd.DataFrame]:
     return salidas
 
 
+def raw_csv_actualizados(archivos_procesados: dict[str, Path]) -> bool:
+    raw_files = [
+        RAW_DIR / "mundial_2026_equipos.csv",
+        RAW_DIR / "mundial_2026_fixture.csv",
+        RAW_DIR / "mundial_2026_jugadores.csv",
+        RAW_DIR / "mundial_2026_sedes.csv",
+    ]
+    if not all(path.exists() for path in raw_files):
+        return False
+    ultimo_raw = max(path.stat().st_mtime for path in raw_files)
+    ultimo_procesado = min(path.stat().st_mtime for path in archivos_procesados.values())
+    return ultimo_raw > ultimo_procesado
+
+
 def cargar_o_procesar_mundial() -> dict[str, pd.DataFrame]:
     esperados = {
         "dim_selecciones": PROCESSED_DIR / "dim_selecciones.csv",
@@ -589,7 +603,7 @@ def cargar_o_procesar_mundial() -> dict[str, pd.DataFrame]:
         "dataset_dashboard": PROCESSED_DIR / "dataset_dashboard.csv",
     }
 
-    if not all(path.exists() for path in esperados.values()):
+    if not all(path.exists() for path in esperados.values()) or raw_csv_actualizados(esperados):
         return procesar_mundial()
 
     return {nombre: pd.read_csv(path) for nombre, path in esperados.items()}
