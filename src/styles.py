@@ -1223,31 +1223,58 @@ def apply_global_styles() -> None:
         .cup-core {
             display: grid;
             place-items: center;
-            gap: 7px;
+            gap: 14px;
             min-height: 280px;
-            border-radius: 28px;
-            color: #FFFFFF;
-            background: linear-gradient(135deg, var(--ink), var(--blue));
-            box-shadow: 0 24px 58px rgba(0,87,216,.24);
+            color: var(--ink);
+            background: transparent;
+            box-shadow: none;
         }
 
         .cup img {
-            width: min(160px, 70%);
+            width: min(170px, 80%);
             height: 190px;
             object-fit: contain;
             display: block;
-            filter: drop-shadow(0 22px 34px rgba(0,0,0,.35));
+            margin: 0 auto;
+            filter: drop-shadow(0 18px 28px rgba(6,20,46,.22));
         }
 
-        .cup-core strong {
+        .final-match-card {
+            width: min(240px, 100%);
+            padding: 14px;
+            border-radius: 18px;
+            color: var(--ink);
+            background: #FFFFFF;
+            border: 1px solid var(--line);
+            box-shadow: 0 18px 42px rgba(6,20,46,.12);
+            text-align: center;
+        }
+
+        .final-match-card span,
+        .final-match-card small {
+            display: block;
+            color: #0048B4;
+            font-size: .72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .final-teams {
+            display: grid;
+            gap: 8px;
+            margin: 10px 0 8px;
+        }
+
+        .final-teams strong {
             font-family: "Barlow Condensed", sans-serif;
-            font-size: 2rem;
+            font-size: 1.45rem;
             line-height: .9;
             text-transform: uppercase;
         }
 
-        .cup-core span {
-            color: rgba(255,255,255,.72);
+        .final-teams i {
+            color: var(--muted);
+            font-style: normal;
             font-size: .75rem;
             font-weight: 900;
             text-transform: uppercase;

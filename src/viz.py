@@ -35,7 +35,18 @@ def bracket_html(cup_data_uri: str) -> str:
       <div class="bracket-col">{left}</div>
       <div class="bracket-col tight">{quarters}</div>
       <div class="bracket-col tighter">{semis}</div>
-      <div class="cup-core"><div class="cup">{cup}</div><strong>Final</strong><span>Copa Mundialito UP</span></div>
+      <div class="cup-core">
+        <div class="cup">{cup}</div>
+        <div class="final-match-card">
+          <span>Final</span>
+          <div class="final-teams">
+            <strong>Finalista 1</strong>
+            <i>vs</i>
+            <strong>Finalista 2</strong>
+          </div>
+          <small>Copa Mundialito UP</small>
+        </div>
+      </div>
       <div class="bracket-col tighter">{semis_r}</div>
       <div class="bracket-col tight">{quarters_r}</div>
       <div class="bracket-col">{right}</div>
