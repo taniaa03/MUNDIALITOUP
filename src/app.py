@@ -16,6 +16,7 @@ PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(CURRENT_DIR))
 
 from data_service import (
+    ALIASES_RENDIMIENTO,
     busqueda_global,
     cargar_datos,
     clubes_por_seleccion,
@@ -28,6 +29,7 @@ from data_service import (
     grupos_torneo,
     historial_equipo,
     jugadores_por_equipo,
+    normalizar_texto,
     opciones_filtros,
     proximos_partidos,
     rendimiento_equipo,
@@ -75,7 +77,7 @@ def init_state(datos: dict[str, pd.DataFrame]) -> None:
         qp_match = qp_match[0] if qp_match else ""
     if isinstance(qp_team, list):
         qp_team = qp_team[0] if qp_team else ""
-    tab_map = {"inicio": "Inicio", "partidos": "Partidos", "paises": "Países", "sedes": "Sedes"}
+    tab_map = {"inicio": "Inicio", "partidos": "Partidos", "paises": "Países", "sedes": "Sedes", "tabla": "Tabla", "ranking": "Tabla"}
     if str(qp_tab).lower() in tab_map:
         st.session_state.tab = tab_map[str(qp_tab).lower()]
     if "tab" not in st.session_state:
@@ -99,7 +101,7 @@ def init_state(datos: dict[str, pd.DataFrame]) -> None:
 
 
 def nav_tabs() -> str:
-    options = ["Inicio", "Partidos", "Países", "Sedes"]
+    options = ["Inicio", "Partidos", "Países", "Sedes", "Tabla"]
     current = st.session_state.get("tab", "Inicio")
     st.markdown(
         """
@@ -108,7 +110,7 @@ def nav_tabs() -> str:
                 <span>Match Centre</span>
                 <strong>Mundialito UP 2026</strong>
             </div>
-            <em>Inicio | Partidos | Países | Sedes</em>
+                <em>Inicio | Partidos | Países | Sedes | Tabla</em>
         </header>
         """,
         unsafe_allow_html=True,
@@ -381,6 +383,207 @@ def render_paises(datos: dict[str, pd.DataFrame]) -> None:
                 )
 
 
+def candidatos_rendimiento(nombre: str) -> set[str]:
+    base = normalizar_texto(nombre)
+    candidatos = {base}
+    alias = ALIASES_RENDIMIENTO.get(base)
+    if alias:
+        candidatos.add(alias)
+    for key, value in ALIASES_RENDIMIENTO.items():
+        if value == base:
+            candidatos.add(key)
+    return {item for item in candidatos if item}
+
+
+def buscar_rendimiento_equipo(nombre: str, rendimiento: pd.DataFrame) -> pd.Series:
+    if rendimiento.empty:
+        return pd.Series(dtype=object)
+    df = rendimiento.copy()
+    for col in ["team_name", "common_name", "country"]:
+        if col not in df.columns:
+            df[col] = ""
+    if "_country_norm" not in df.columns:
+        df["_country_norm"] = df["country"].apply(normalizar_texto)
+        df["_common_norm"] = df["common_name"].apply(normalizar_texto)
+        df["_team_norm"] = df["team_name"].apply(normalizar_texto)
+    candidatos = candidatos_rendimiento(nombre)
+    exact = df[df["_country_norm"].isin(candidatos) | df["_common_norm"].isin(candidatos)]
+    if not exact.empty:
+        return exact.iloc[0]
+    contains = df[
+        df["_team_norm"].apply(lambda value: any(item in value for item in candidatos))
+        | df["_common_norm"].apply(lambda value: any(item in value for item in candidatos))
+    ]
+    if not contains.empty:
+        return contains.iloc[0]
+    return pd.Series(dtype=object)
+
+
+def construir_ranking_integral(datos: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    equipos = datos["dataset_dashboard"].copy()
+    rendimiento = datos["rendimiento_companero"].copy()
+    registros = []
+    for _, equipo in equipos.iterrows():
+        row = buscar_rendimiento_equipo(str(equipo["seleccion"]), rendimiento)
+        registros.append(
+            {
+                "Selección": equipo.get("seleccion", ""),
+                "Grupo": equipo.get("grupo", ""),
+                "Confederación": equipo.get("confederacion", ""),
+                "Jugadores": equipo.get("cantidad_jugadores", 0),
+                "Edad prom.": equipo.get("edad_promedio", pd.NA),
+                "Altura prom.": equipo.get("altura_promedio", pd.NA),
+                "Arqueros": equipo.get("arqueros", 0),
+                "Defensas": equipo.get("defensas", 0),
+                "Medios": equipo.get("mediocampistas", 0),
+                "Delanteros": equipo.get("delanteros", 0),
+                "Partidos grupo": equipo.get("partidos_fixture", 0),
+                "Rivales": equipo.get("rivales_grupo", ""),
+                "PJ rend.": row.get("matches_played", pd.NA),
+                "Victorias": row.get("wins", pd.NA),
+                "Empates": row.get("draws", pd.NA),
+                "Derrotas": row.get("losses", pd.NA),
+                "PPG": row.get("points_per_game", pd.NA),
+                "GF/P": row.get("goals_scored_per_match", pd.NA),
+                "GC/P": row.get("goals_conceded_per_match", pd.NA),
+                "Valla invicta %": row.get("clean_sheet_percentage", pd.NA),
+                "Posesión %": row.get("average_possession", pd.NA),
+                "Tiros al arco": row.get("shots_on_target", pd.NA),
+                "Faltas": row.get("fouls", pd.NA),
+            }
+        )
+    ranking = pd.DataFrame(registros)
+    metricas = [
+        "Jugadores",
+        "Edad prom.",
+        "Altura prom.",
+        "Arqueros",
+        "Defensas",
+        "Medios",
+        "Delanteros",
+        "Partidos grupo",
+        "PJ rend.",
+        "Victorias",
+        "Empates",
+        "Derrotas",
+        "PPG",
+        "GF/P",
+        "GC/P",
+        "Valla invicta %",
+        "Posesión %",
+        "Tiros al arco",
+        "Faltas",
+    ]
+    for col in metricas:
+        ranking[col] = pd.to_numeric(ranking[col], errors="coerce")
+    ranking = ranking.sort_values("PPG", ascending=False, na_position="last").reset_index(drop=True)
+    ranking.insert(0, "Rank", range(1, len(ranking) + 1))
+    return ranking
+
+
+def render_ranking(datos: dict[str, pd.DataFrame]) -> None:
+    render_section_head("Tabla comparativa", "selecciones y rendimiento previo")
+    st.markdown(
+        """
+        <div class="empty-state" style="text-align:left;">
+            Esta tabla cruza el perfil del plantel con rendimiento internacional: edad,
+            altura, posiciones, puntos por partido, goles, defensa, posesión y rivales.
+            No es un ranking oficial: se puede ordenar por la variable que el usuario elija.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    ranking = construir_ranking_integral(datos)
+    metric_options = [
+        "PPG",
+        "GF/P",
+        "GC/P",
+        "Valla invicta %",
+        "Posesión %",
+        "Tiros al arco",
+        "Victorias",
+        "Derrotas",
+        "Edad prom.",
+        "Altura prom.",
+    ]
+    c1, c2, c3, c4 = st.columns([1.05, 1.05, 1.2, 0.85])
+    with c1:
+        categoria = st.selectbox("Categoría", ["Todas", "Confederación", "Grupo"])
+    if categoria == "Confederación":
+        valores = ["Todas"] + sorted(ranking["Confederación"].dropna().unique().tolist())
+        campo_categoria = "Confederación"
+    elif categoria == "Grupo":
+        valores = ["Todos"] + sorted(ranking["Grupo"].dropna().astype(str).unique().tolist())
+        campo_categoria = "Grupo"
+    else:
+        valores = ["Todas"]
+        campo_categoria = ""
+    with c2:
+        valor_categoria = st.selectbox("Valor", valores)
+    with c3:
+        columna = st.selectbox("Indicador de comparación", metric_options)
+    with c4:
+        orden = st.selectbox("Orden", ["Mayor a menor", "Menor a mayor"])
+
+    filtrado = ranking.copy()
+    if campo_categoria and valor_categoria not in ["Todas", "Todos"]:
+        filtrado = filtrado[filtrado[campo_categoria].astype(str) == str(valor_categoria)]
+
+    col_min = float(pd.to_numeric(filtrado[columna], errors="coerce").min()) if not filtrado.empty else 0.0
+    col_max = float(pd.to_numeric(filtrado[columna], errors="coerce").max()) if not filtrado.empty else 0.0
+    if col_min == col_max:
+        rango = (col_min, col_max)
+        st.slider("Rango", min_value=col_min, max_value=col_max + 1.0, value=(col_min, col_max + 1.0), disabled=True)
+    else:
+        rango = st.slider("Rango", min_value=col_min, max_value=col_max, value=(col_min, col_max))
+    filtrado = filtrado[
+        pd.to_numeric(filtrado[columna], errors="coerce").between(rango[0], rango[1], inclusive="both")
+    ]
+    filtrado = filtrado.sort_values(columna, ascending=orden == "Menor a mayor").reset_index(drop=True)
+    filtrado["Rank"] = range(1, len(filtrado) + 1)
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Selecciones", len(filtrado))
+    k2.metric("PPG promedio", fmt(filtrado["PPG"].mean() if not filtrado.empty else 0))
+    k3.metric("GF/P promedio", fmt(filtrado["GF/P"].mean() if not filtrado.empty else 0))
+    k4.metric("Edad promedio", fmt(filtrado["Edad prom."].mean() if not filtrado.empty else 0))
+
+    columnas_tabla = [
+        "Rank",
+        "Selección",
+        "Grupo",
+        "Confederación",
+        "PPG",
+        "GF/P",
+        "GC/P",
+        "Valla invicta %",
+        "Posesión %",
+        "Victorias",
+        "Edad prom.",
+        "Altura prom.",
+        "Jugadores",
+        "Arqueros",
+        "Defensas",
+        "Medios",
+        "Delanteros",
+        "Rivales",
+    ]
+    st.dataframe(
+        filtrado[columnas_tabla],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "PPG": st.column_config.NumberColumn("PPG", format="%.2f"),
+            "GF/P": st.column_config.NumberColumn("GF/P", format="%.2f"),
+            "GC/P": st.column_config.NumberColumn("GC/P", format="%.2f"),
+            "Valla invicta %": st.column_config.NumberColumn("Valla invicta %", format="%.0f%%"),
+            "Posesión %": st.column_config.NumberColumn("Posesión %", format="%.0f%%"),
+            "Edad prom.": st.column_config.NumberColumn("Edad prom.", format="%.1f"),
+            "Altura prom.": st.column_config.NumberColumn("Altura prom.", format="%.1f"),
+        },
+    )
+
+
 def sede_points(sedes: pd.DataFrame, fixture: pd.DataFrame) -> pd.DataFrame:
     fixture_sedes = fixture[["estadio", "ciudad", "pais_sede"]].drop_duplicates()
     df = fixture_sedes.merge(
@@ -508,8 +711,10 @@ def main() -> None:
         render_partidos(datos)
     elif tab == "Países":
         render_paises(datos)
-    else:
+    elif tab == "Sedes":
         render_sedes(datos)
+    else:
+        render_ranking(datos)
 
 
 if __name__ == "__main__":
