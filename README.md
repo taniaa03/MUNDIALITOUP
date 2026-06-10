@@ -67,7 +67,6 @@ MUNDIALITOUP/
 |       |-- raw/
 |       `-- processed/
 |-- docs/
-|   `-- rubrica_proyecto.md
 |-- src/
 |   |-- app.py
 |   |-- api_or_scraper.py
