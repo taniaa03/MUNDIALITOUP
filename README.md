@@ -1,45 +1,117 @@
-# Mundialito UP
+# Mundialito UP 2026
 
-Dashboard en Streamlit para analizar datos del Mundial 2026 y datos historicos de rendimiento/enfrentamientos.
+Dashboard interactivo desarrollado con Streamlit para explorar el fixture, las
+selecciones, los jugadores y las sedes del Mundial 2026.
 
-## Estructura principal
+## Funcionalidades
+
+### Inicio
+
+- Portada oficial y resumen general del torneo.
+- Cantidad de selecciones, jugadores, partidos y sedes.
+- Partidos por ciudad.
+- Jugadores por confederacion en barras horizontales.
+- Distribucion de posiciones en grafico pastel.
+- Edad promedio por grupo en grafico de lineas, con grupos A-L, ejes y valores.
+- Proximos partidos.
+- Representacion del camino hacia la final.
+
+### Partidos
+
+- Filtro unico por grupo.
+- Proximos partidos del grupo seleccionado.
+- Previa de cada encuentro.
+- Comparacion entre selecciones.
+- Planteles, rendimiento reciente y datos del estadio.
+- Listado completo de partidos por fecha.
+
+### Paises
+
+- Selector de las 48 selecciones.
+- Informacion general de cada equipo.
+- Edad, altura y cantidad de jugadores.
+- Partidos programados.
+- Plantel y clubes mas representados.
+
+### Sedes
+
+- Mapa interactivo de las sedes.
+- Informacion del estadio, ciudad, pais y capacidad.
+- Imagen de cada estadio disponible.
+- Partidos programados por sede.
+
+## Tecnologias
+
+- Python
+- Streamlit
+- Pandas
+- HTML y CSS
+- OpenPyXL
+
+## Estructura del proyecto
 
 ```text
-data/
-+-- equipos.xlsx
-+-- enfrentamientos.xlsx
-+-- processed/
-|   +-- equipos_procesado.csv
-|   +-- enfrentamientos_procesado.csv
-+-- mundial_2026/
-|   +-- raw/
-|   +-- processed/
-docs/
-+-- rubrica_proyecto.md
-+-- parcial.docx
-src/
-+-- app.py
-+-- processing.py
-+-- mundial_processing.py
-+-- viz.py
+MUNDIALITOUP/
+|-- assets/
+|   |-- branding/
+|   |   |-- mundialito_hero.png
+|   |   `-- trophy_final.png
+|   `-- estadios/
+|-- data/
+|   |-- equipos.xlsx
+|   |-- enfrentamientos.xlsx
+|   |-- processed/
+|   |   |-- equipos_procesado.csv
+|   |   `-- enfrentamientos_procesado.csv
+|   `-- mundial_2026/
+|       |-- raw/
+|       `-- processed/
+|-- docs/
+|-- src/
+|   |-- app.py
+|   |-- api_or_scraper.py
+|   |-- data_service.py
+|   |-- db.py
+|   |-- mundial_processing.py
+|   |-- processing.py
+|   |-- styles.py
+|   |-- ui_components.py
+|   `-- viz.py
+|-- requirements.txt
+`-- README.md
 ```
 
-## Division de trabajo:
+## Modulos principales
 
-- Los archivos `data/equipos.xlsx`, `data/enfrentamientos.xlsx` y sus CSV procesados corresponden a la parte del companero.
-- La carpeta `data/mundial_2026/` corresponde al bloque Mundial 2026.
-- El dashboard mantiene ambas partes separadas para evitar modificar datos que no pertenecen a la primera parte.
+- `src/app.py`: punto de entrada de la aplicacion Streamlit y navegacion principal.
+- `src/data_service.py`: consultas, filtros y funciones para obtener informacion del torneo.
+- `src/mundial_processing.py`: procesamiento de archivos fuente del Mundial 2026.
+- `src/processing.py`: procesamiento de datos complementarios del proyecto.
+- `src/ui_components.py`: componentes visuales reutilizables como tarjetas, banderas y previas.
+- `src/viz.py`: graficos, bracket del torneo y mapa interactivo de sedes.
+- `src/styles.py`: estilos globales del dashboard.
+- `src/db.py`: utilidades relacionadas con almacenamiento o acceso a datos.
+- `src/api_or_scraper.py`: punto preparado para carga externa o scraping de datos.
 
-## Datos del bloque Mundial 2026
+## Datos
 
-Archivos fuente en `data/mundial_2026/raw/`:
+### Archivos fuente
+
+Ubicados en `data/mundial_2026/raw/`:
 
 - `mundial_2026_equipos.csv`
 - `mundial_2026_fixture.csv`
 - `mundial_2026_jugadores.csv`
 - `mundial_2026_sedes.csv`
 
-Tablas procesadas en `data/mundial_2026/processed/`:
+Tambien se incluyen archivos complementarios en `data/`:
+
+- `equipos.xlsx`
+- `enfrentamientos.xlsx`
+
+### Archivos procesados
+
+Ubicados en `data/mundial_2026/processed/`:
 
 - `dim_selecciones.csv`
 - `dim_sedes.csv`
@@ -47,46 +119,70 @@ Tablas procesadas en `data/mundial_2026/processed/`:
 - `fact_jugadores.csv`
 - `dataset_dashboard.csv`
 
-## Fuentes usadas
+Ubicados en `data/processed/`:
 
-- FIFA Squad Lists PDF: planteles y selecciones.
-- FIFA World Cup 2026 Hospitality / On Location: fixture y sedes disponibles.
-- FIFA scores and fixtures: referencia de verificacion del fixture.
+- `equipos_procesado.csv`
+- `enfrentamientos_procesado.csv`
 
-## Ejecutar localmente
+## Instalacion
 
-Crear y activar entorno virtual:
+Crear el entorno virtual:
 
 ```powershell
 python -m venv venv
+```
+
+Activarlo en Windows:
+
+```powershell
 venv\Scripts\activate
 ```
 
-Instalar dependencias:
+Instalar las dependencias:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-Procesar el bloque Mundial 2026:
+## Ejecucion
+
+Procesar nuevamente los datos, cuando sea necesario:
 
 ```powershell
 python src\mundial_processing.py
 ```
 
-Ejecutar dashboard:
+Iniciar el dashboard:
 
 ```powershell
 streamlit run src/app.py
 ```
 
-## Entrega parcial
+La aplicacion estara disponible normalmente en:
 
-El prototipo incluye:
+```text
+http://localhost:8501
+```
 
-- Carga de CSV.
-- Limpieza de datos y normalizacion.
-- Tabla integrada para dashboard.
-- Metricas descriptivas.
-- Graficos de barras.
-- Controles por seleccion, grupo, sede, posicion y club.
+## Division sugerida para cinco integrantes
+
+1. Procesamiento, limpieza y validacion de datos.
+2. Portada, resumen general y recursos visuales.
+3. Graficos y panel de indicadores.
+4. Fixture, filtros y previa de partidos.
+5. Perfiles de paises, sedes, documentacion y pruebas.
+
+Cada integrante debe trabajar en una rama propia y crear un commit con cambios
+relacionados exclusivamente con su responsabilidad.
+
+## Fuentes de referencia
+
+- FIFA Squad Lists: planteles y selecciones.
+- FIFA World Cup 2026 Hospitality / On Location: fixture y sedes.
+- FIFA Scores and Fixtures: verificacion del calendario.
+
+## Estado
+
+El dashboard cuenta con navegacion entre Inicio, Partidos, Paises y Sedes,
+visualizaciones adaptadas a la tematica deportiva y datos procesados del Mundial
+2026.

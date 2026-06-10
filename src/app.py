@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import sys
 from html import escape
 from pathlib import Path
@@ -43,6 +42,7 @@ from ui_components import (
     render_section_head,
     stadium_data_uri,
 )
+import viz as viz_helpers
 
 
 st.set_page_config(page_title="Mundialito UP", layout="wide", initial_sidebar_state="collapsed")
@@ -157,49 +157,6 @@ def asset_data_uri(relative_path: str) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def chart_card(title: str, series: pd.Series, variant: str = "bar") -> str:
-    data = series.dropna()
-    if data.empty:
-        return f'<div class="viz-card"><h3>{escape(title)}</h3><div class="empty-mini">Sin datos</div></div>'
-    data = data.head(8)
-    max_value = float(data.max()) if float(data.max()) else 1.0
-    if variant == "line":
-        values = [float(v) for v in data.tolist()]
-        max_v = max(values) or 1.0
-        min_v = min(values)
-        span = max(max_v - min_v, 1.0)
-        points = []
-        width = 320
-        height = 120
-        for index, value in enumerate(values):
-            x = 18 + (index / max(len(values) - 1, 1)) * (width - 36)
-            y = 16 + (1 - ((value - min_v) / span)) * (height - 32)
-            points.append(f"{x:.1f},{y:.1f}")
-        labels = "".join(
-            f'<span>{escape(str(label))}</span>' for label in data.index.astype(str).tolist()
-        )
-        circles = []
-        for point in points:
-            cx, cy = point.split(",")
-            circles.append(f'<circle cx="{cx}" cy="{cy}" r="4"></circle>')
-        return (
-            f'<div class="viz-card"><h3>{escape(title)}</h3>'
-            f'<svg class="line-viz" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
-            f'<polyline points="{" ".join(points)}"></polyline>'
-            f'{"".join(circles)}'
-            f'</svg><div class="viz-labels">{labels}</div></div>'
-        )
-    rows = []
-    for label, value in data.items():
-        pct = max(5, min(100, (float(value) / max_value) * 100))
-        rows.append(
-            f'<div class="bar-row"><div class="bar-top"><span>{escape(str(label))}</span>'
-            f'<strong>{fmt(value)}</strong></div><div class="bar-track">'
-            f'<i style="width:{pct:.1f}%"></i></div></div>'
-        )
-    return f'<div class="viz-card"><h3>{escape(title)}</h3>{"".join(rows)}</div>'
-
-
 def match_card_button(row: pd.Series, key: str, active: bool = False) -> None:
     cls = "match-tile active-card" if active else "match-tile"
     grupo = clean(row.get("grupo"), "Grupo por definir")
@@ -257,10 +214,14 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
     hero_uri = asset_data_uri("assets/branding/mundialito_hero.png")
     st.markdown(
         f"""
-        <section class="home-hero" style="--hero-image: url('{hero_uri}')">
+        <section class="home-hero">
+            <img class="home-hero-bg" src="{hero_uri}" alt="Portada Mundialito UP 2026" />
             <div>
                 <div class="kicker">Portada oficial del torneo</div>
-                <h1>Mundialito UP 2026</h1>
+                <h1>
+                    <span style="display:block; white-space:nowrap;">Mundialito UP</span>
+                    <span style="display:block;">2026</span>
+                </h1>
                 <p>Fixture, selecciones, sedes y camino al título en una experiencia deportiva interactiva.</p>
             </div>
             <div class="hero-kpis">
@@ -283,60 +244,44 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
     edad_grupo = equipos.groupby("grupo")["edad_promedio"].mean().sort_index()
     st.markdown(
         '<div class="viz-grid">'
-        + chart_card("Partidos por ciudad", partidos_sede)
-        + chart_card("Jugadores por confederacion", jugadores_conf)
-        + chart_card("Distribucion de posiciones", posiciones)
-        + chart_card("Edad promedio por grupo", edad_grupo, "line")
+        + viz_helpers.chart_card("Partidos por ciudad", partidos_sede)
+        + viz_helpers.chart_card("Jugadores por confederacion", jugadores_conf, "horizontal")
+        + '<div style="grid-column:1 / -1;">'
+        + viz_helpers.chart_card("Distribucion de posiciones", posiciones, "pie")
+        + '</div>'
+        + '<div style="grid-column:1 / -1;">'
+        + viz_helpers.chart_card("Edad promedio por grupo", edad_grupo, "line")
+        + '</div>'
         + '</div>',
         unsafe_allow_html=True,
     )
 
-    render_section_head("Partidos destacados", "primeros cruces del fixture")
+    render_section_head("Próximos partidos", "primeros cruces del fixture")
     featured = proximos_partidos(fixture, 4)
     cols = st.columns(4)
     for idx, (_, row) in enumerate(featured.iterrows()):
         with cols[idx % 4]:
             match_card_button(row, f"home_match_{int(row['match_no'])}", active=False)
     render_section_head("Camino al título", "estructura desde octavos hasta la final")
-    st.markdown(bracket_html(), unsafe_allow_html=True)
-
-
-def bracket_html() -> str:
-    left = "".join(f'<div class="bracket-slot">Octavos {i}</div>' for i in range(1, 9))
-    quarters = "".join(f'<div class="bracket-slot">Cuartos {i}</div>' for i in range(1, 5))
-    semis = "".join(f'<div class="bracket-slot">Semifinal {i}</div>' for i in range(1, 3))
-    right = "".join(f'<div class="bracket-slot">Octavos {i}</div>' for i in range(9, 17))
-    quarters_r = "".join(f'<div class="bracket-slot">Cuartos {i}</div>' for i in range(5, 9))
-    semis_r = "".join(f'<div class="bracket-slot">Semifinal {i}</div>' for i in range(3, 5))
-    cup = f'<img src="{asset_data_uri("assets/branding/trophy_final.png")}" alt="Copa Mundialito UP" />'
-    return f"""
-    <section class="bracket">
-      <div class="bracket-col">{left}</div>
-      <div class="bracket-col tight">{quarters}</div>
-      <div class="bracket-col tighter">{semis}</div>
-      <div class="cup-core"><div class="cup">{cup}</div><strong>Final</strong><span>Copa Mundialito UP</span></div>
-      <div class="bracket-col tighter">{semis_r}</div>
-      <div class="bracket-col tight">{quarters_r}</div>
-      <div class="bracket-col">{right}</div>
-    </section>
-    """
+    st.markdown(viz_helpers.bracket_html(asset_data_uri("assets/branding/trophy_final.png")), unsafe_allow_html=True)
 
 
 def render_partidos(datos: dict[str, pd.DataFrame]) -> None:
     fixture = datos["fact_fixture"]
     filtros = opciones_filtros(fixture, datos["dataset_dashboard"])
     render_section_head("Partidos", "fixture filtrable y previa inmediata")
-    f1, f2, f3 = st.columns(3)
-    f4, f5, f6 = st.columns(3)
-    grupo = f1.selectbox("Grupo", filtros["grupos"])
-    pais = f2.selectbox("País", filtros["paises"])
-    fecha = f3.selectbox("Fecha", filtros["fechas"])
-    ciudad = f4.selectbox("Ciudad", filtros["ciudades"])
-    estadio = f5.selectbox("Estadio", filtros["estadios"])
-    fase = f6.selectbox("Fase", filtros["fases"])
-    filtered = filtrar_fixture(fixture, grupo, pais, fecha, ciudad, estadio, fase)
+    grupo = st.selectbox("Grupo", filtros["grupos"])
+    filtered = filtrar_fixture(
+        fixture,
+        grupo,
+        "Todos",
+        "Todas",
+        "Todas",
+        "Todos",
+        "Todas",
+    )
 
-    render_section_head("Partidos recientes", "primeros registros cargados")
+    render_section_head("Próximos partidos", "primeros registros cargados")
     recent_cols = st.columns(4)
     for idx, (_, row) in enumerate(proximos_partidos(filtered if not filtered.empty else fixture, 4).iterrows()):
         with recent_cols[idx % 4]:
@@ -490,110 +435,6 @@ def map_svg(sedes_df: pd.DataFrame, selected: str) -> str:
     """
 
 
-def map_leaflet_html(sedes_df: pd.DataFrame, selected: str) -> str:
-    venues = []
-    for _, row in sedes_df.dropna(subset=["latitud", "longitud"]).iterrows():
-        name = str(row["estadio"])
-        venues.append(
-            {
-                "name": name,
-                "city": str(row["ciudad"]),
-                "country": str(row["pais_sede"]),
-                "lat": float(row["latitud"]),
-                "lon": float(row["longitud"]),
-                "active": name == selected,
-                "url": app_url("sedes", sede=name),
-            }
-        )
-    payload = json.dumps(venues, ensure_ascii=False)
-    return f"""
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <style>
-        html, body {{ margin: 0; padding: 0; background: transparent; }}
-        #venue-map {{
-          height: 520px;
-          width: 100%;
-          border-radius: 28px;
-          overflow: hidden;
-          background: #0A1D3E;
-          box-shadow: 0 24px 56px rgba(6,20,46,.16);
-          border: 1px solid rgba(13,38,77,.18);
-        }}
-        .leaflet-container {{
-          font-family: Barlow, Arial, sans-serif;
-        }}
-        .leaflet-tooltip {{
-          border: 0;
-          border-radius: 12px;
-          padding: 8px 10px;
-          color: #06142E;
-          box-shadow: 0 12px 26px rgba(6,20,46,.18);
-          font-weight: 800;
-        }}
-        .map-caption {{
-          position: absolute;
-          left: 18px;
-          top: 18px;
-          z-index: 600;
-          padding: 10px 12px;
-          border-radius: 16px;
-          color: #FFFFFF;
-          background: rgba(6,20,46,.86);
-          border: 1px solid rgba(255,255,255,.16);
-          font-weight: 900;
-          text-transform: uppercase;
-          letter-spacing: 0;
-          pointer-events: none;
-        }}
-      </style>
-    </head>
-    <body>
-      <div id="venue-map"><div class="map-caption">Sedes Norteamérica 2026</div></div>
-      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-      <script>
-        const venues = {payload};
-        const map = L.map('venue-map', {{
-          scrollWheelZoom: false,
-          zoomControl: true,
-          attributionControl: false
-        }});
-        L.tileLayer('https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-          maxZoom: 18
-        }}).addTo(map);
-        const bounds = [];
-        venues.forEach((venue) => {{
-          bounds.push([venue.lat, venue.lon]);
-          const marker = L.circleMarker([venue.lat, venue.lon], {{
-            radius: venue.active ? 13 : 9,
-            color: venue.active ? '#06142E' : '#FFFFFF',
-            weight: venue.active ? 4 : 3,
-            fillColor: venue.active ? '#D6A329' : '#0057D8',
-            fillOpacity: venue.active ? 1 : .88
-          }}).addTo(map);
-          marker.bindTooltip(`<strong>${{venue.name}}</strong><br>${{venue.city}}, ${{venue.country}}`, {{
-            direction: 'top',
-            offset: [0, -8]
-          }});
-          marker.on('click', () => {{
-            window.open(venue.url, '_top');
-          }});
-        }});
-        if (bounds.length) {{
-          map.fitBounds(bounds, {{ padding: [44, 44] }});
-        }} else {{
-          map.setView([39, -98], 3);
-        }}
-      </script>
-    </body>
-    </html>
-    """
-
-
 def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
     sedes = datos["dim_sedes"]
     fixture = datos["fact_fixture"]
@@ -603,7 +444,7 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
         st.session_state.selected_stadium = str(points.iloc[0]["estadio"])
     selected = st.session_state.selected_stadium
     render_section_head("Sedes", "mapa real de Norteamerica")
-    components.html(map_leaflet_html(points, selected), height=540, scrolling=False)
+    components.html(viz_helpers.map_leaflet_html(points, selected), height=540, scrolling=False)
     selected_row = points[points["estadio"] == selected].iloc[0]
     stadium = get_stadium(sedes, selected, fixture)
     stadium_fixture = fixture_por_estadio(fixture, selected)
