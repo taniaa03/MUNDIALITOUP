@@ -24,7 +24,7 @@ src/
 +-- viz.py
 ```
 
-## Division de trabajo
+## Division de trabajo:
 
 - Los archivos `data/equipos.xlsx`, `data/enfrentamientos.xlsx` y sus CSV procesados corresponden a la parte del companero.
 - La carpeta `data/mundial_2026/` corresponde al bloque Mundial 2026.
