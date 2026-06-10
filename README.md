@@ -48,20 +48,26 @@ selecciones, los jugadores y las sedes del Mundial 2026.
 - HTML y CSS
 - OpenPyXL
 
-## Estructura
+## Estructura del proyecto
 
 ```text
-MUNDIALITOUP2/
+MUNDIALITOUP/
 |-- assets/
 |   |-- branding/
 |   |   |-- mundialito_hero.png
 |   |   `-- trophy_final.png
 |   `-- estadios/
 |-- data/
+|   |-- equipos.xlsx
+|   |-- enfrentamientos.xlsx
+|   |-- processed/
+|   |   |-- equipos_procesado.csv
+|   |   `-- enfrentamientos_procesado.csv
 |   `-- mundial_2026/
 |       |-- raw/
 |       `-- processed/
 |-- docs/
+|   `-- rubrica_proyecto.md
 |-- src/
 |   |-- app.py
 |   |-- api_or_scraper.py
@@ -76,6 +82,18 @@ MUNDIALITOUP2/
 `-- README.md
 ```
 
+## Modulos principales
+
+- `src/app.py`: punto de entrada de la aplicacion Streamlit y navegacion principal.
+- `src/data_service.py`: consultas, filtros y funciones para obtener informacion del torneo.
+- `src/mundial_processing.py`: procesamiento de archivos fuente del Mundial 2026.
+- `src/processing.py`: procesamiento de datos complementarios del proyecto.
+- `src/ui_components.py`: componentes visuales reutilizables como tarjetas, banderas y previas.
+- `src/viz.py`: graficos, bracket del torneo y mapa interactivo de sedes.
+- `src/styles.py`: estilos globales del dashboard.
+- `src/db.py`: utilidades relacionadas con almacenamiento o acceso a datos.
+- `src/api_or_scraper.py`: punto preparado para carga externa o scraping de datos.
+
 ## Datos
 
 ### Archivos fuente
@@ -87,6 +105,11 @@ Ubicados en `data/mundial_2026/raw/`:
 - `mundial_2026_jugadores.csv`
 - `mundial_2026_sedes.csv`
 
+Tambien se incluyen archivos complementarios en `data/`:
+
+- `equipos.xlsx`
+- `enfrentamientos.xlsx`
+
 ### Archivos procesados
 
 Ubicados en `data/mundial_2026/processed/`:
@@ -96,6 +119,11 @@ Ubicados en `data/mundial_2026/processed/`:
 - `fact_fixture.csv`
 - `fact_jugadores.csv`
 - `dataset_dashboard.csv`
+
+Ubicados en `data/processed/`:
+
+- `equipos_procesado.csv`
+- `enfrentamientos_procesado.csv`
 
 ## Instalacion
 
