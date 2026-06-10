@@ -472,22 +472,23 @@ def apply_global_styles() -> None:
         .stadium-panel {
             min-height: 440px;
             color: #FFFFFF;
-            background: var(--ink);
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            overflow: visible;
         }
 
         .stadium-media {
             position: relative;
             height: 260px;
-            overflow: hidden;
-            background:
-                radial-gradient(circle at 50% 34%, rgba(214,163,41,.32), transparent 30%),
-                linear-gradient(135deg, var(--blue), var(--ink) 62%, var(--green));
+            overflow: visible;
+            background: transparent;
         }
 
         .stadium-media img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
             display: block;
         }
 
@@ -500,6 +501,9 @@ def apply_global_styles() -> None:
 
         .stadium-copy {
             padding: 20px;
+            background: var(--ink);
+            border-radius: 22px;
+            box-shadow: 0 18px 42px rgba(6,20,46,.12);
         }
 
         .stadium-copy h2 {
@@ -528,6 +532,10 @@ def apply_global_styles() -> None:
             font-size: .74rem;
             font-weight: 900;
             text-transform: uppercase;
+        }
+
+        .stadium-copy .chip {
+            color: #FFFFFF;
         }
 
         .comparison-panel,
@@ -619,6 +627,12 @@ def apply_global_styles() -> None:
 
         .result-grid {
             grid-template-columns: repeat(4, minmax(0,1fr));
+        }
+
+        .status-win,
+        .status-loss,
+        .status-draw {
+            color: #FFFFFF !important;
         }
 
         .status-win { background: var(--green); }
@@ -1414,6 +1428,9 @@ def apply_global_styles() -> None:
             align-items: stretch;
             padding: 18px;
             margin-bottom: 22px;
+            background: transparent;
+            border: 0;
+            box-shadow: none;
         }
 
         .stadium-detail h2 {
