@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -15,6 +16,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(CURRENT_DIR))
 sys.path.append(str(PROJECT_ROOT / "scripts"))
+LIVE_SCORE_REFRESH_SECONDS = 60
 
 from data_service import (
     ALIASES_RENDIMIENTO,
@@ -77,6 +79,59 @@ def sync_live_data_manually() -> tuple[bool, str]:
         return True, "Datos de partidos actualizados correctamente."
     except Exception as error:
         return False, f"No se pudo consultar la API: {error}"
+
+
+def maybe_sync_live_scores() -> None:
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists() or "BZZOIRO_API_TOKEN=" not in env_path.read_text(encoding="utf-8", errors="ignore"):
+        return
+    marker = PROJECT_ROOT / "data" / "mundial_2026" / ".last_live_sync"
+    now = time.time()
+    if marker.exists() and now - marker.stat().st_mtime < LIVE_SCORE_REFRESH_SECONDS:
+        return
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(str(now), encoding="utf-8")
+    try:
+        from sync_bzzoiro import sincronizar
+
+        sincronizar(status="inprogress")
+        st.cache_data.clear()
+    except Exception:
+        return
+
+
+def install_live_clock() -> None:
+    components.html(
+        f"""
+        <script>
+        const tickLiveClock = () => {{
+          const doc = window.parent.document;
+          doc.querySelectorAll('.live-clock[data-minute]').forEach((el) => {{
+            const baseMinute = Number(el.dataset.minute || '0');
+            const updatedRaw = el.dataset.updated || '';
+            const period = (el.dataset.period || '').toLowerCase();
+            if (!baseMinute || !updatedRaw) return;
+            if (['halftime', 'ht', 'descanso'].includes(period)) {{
+              el.textContent = 'Descanso';
+              return;
+            }}
+            if (['finished', 'finalizado', 'ft'].includes(period)) {{
+              el.textContent = 'FT';
+              return;
+            }}
+            const updated = new Date(updatedRaw.replace(' ', 'T') + 'Z');
+            if (Number.isNaN(updated.getTime())) return;
+            const elapsed = Math.max(0, Math.floor((Date.now() - updated.getTime()) / 60000));
+            el.textContent = `${{baseMinute + elapsed}}'`;
+          }});
+        }};
+        tickLiveClock();
+        window.setInterval(tickLiveClock, 1000);
+        window.setTimeout(() => window.parent.location.reload(), {LIVE_SCORE_REFRESH_SECONDS * 1000});
+        </script>
+        """,
+        height=0,
+    )
 
 
 def init_state(datos: dict[str, pd.DataFrame]) -> None:
@@ -204,6 +259,23 @@ def match_status(row: pd.Series) -> tuple[str, str, str]:
     return "Programado", "scheduled", ""
 
 
+def live_clock_html(row: pd.Series, fallback: str = "") -> str:
+    label, status_cls, _ = match_status(row)
+    if status_cls != "live":
+        return escape(fallback)
+    minute = score_value(row.get("minuto_actual"))
+    if not minute:
+        return escape(fallback)
+    updated = clean(row.get("actualizado_db"), "")
+    period = clean(row.get("periodo"), "")
+    display = fallback or minute + "'"
+    return (
+        f'<span class="live-clock" data-minute="{escape(minute, quote=True)}" '
+        f'data-updated="{escape(updated, quote=True)}" '
+        f'data-period="{escape(period, quote=True)}">{escape(display)}</span>'
+    )
+
+
 def asset_data_uri(relative_path: str) -> str:
     path = PROJECT_ROOT / relative_path
     if not path.exists():
@@ -222,6 +294,7 @@ def match_card_button(row: pd.Series, key: str, active: bool = False) -> None:
     codigo_visitante = "" if pd.isna(row.get("codigo_visitante")) else row.get("codigo_visitante")
     match_no = int(row["match_no"])
     estado_label, estado_cls, estado_extra = match_status(row)
+    estado_extra_html = live_clock_html(row, estado_extra)
     gol_local = score_value(row.get("goles_local"))
     gol_visitante = score_value(row.get("goles_visitante"))
     score_local = f'<strong class="tile-score">{gol_local}</strong>' if gol_local else ""
@@ -232,7 +305,7 @@ def match_card_button(row: pd.Series, key: str, active: bool = False) -> None:
         <div class="{cls}">
             <div class="tile-status-row">
                 <span class="match-status status-{estado_cls}">{estado_label}</span>
-                <span>{estado_extra}</span>
+                <span>{estado_extra_html}</span>
             </div>
             <div class="tile-meta">M{int(row["match_no"])} · {grupo} · {clean(row.get("fase"))}</div>
             <div class="tile-team">{flag_img(codigo_local, local, "sm")}<span>{local}</span>{score_local}</div>
@@ -281,6 +354,7 @@ def render_match_stats(match: pd.Series, estadisticas: pd.DataFrame) -> None:
         return
 
     label, status_cls, extra = match_status(match)
+    extra_html = live_clock_html(match, extra)
     local_score = score_value(match.get("goles_local")) or "-"
     away_score = score_value(match.get("goles_visitante")) or "-"
     metrics = [
@@ -316,7 +390,7 @@ def render_match_stats(match: pd.Series, estadisticas: pd.DataFrame) -> None:
         f'<div class="live-scoreline">'
         f'<span class="match-status status-{status_cls}">{escape(label)}</span>'
         f'<strong>{escape(local_score)} - {escape(away_score)}</strong>'
-        f'<span>{escape(extra)}</span>'
+        f'<span>{extra_html}</span>'
         f'</div>'
         f'<div class="two-grid">{"".join(blocks)}</div>'
         f'</section>'
@@ -338,6 +412,7 @@ def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> N
         items = []
         for _, row in rows.iterrows():
             estado_label, estado_cls, extra = match_status(row)
+            extra_html = live_clock_html(row, extra)
             local_score = score_value(row.get("goles_local"))
             away_score = score_value(row.get("goles_visitante"))
             score = f"{local_score} - {away_score}" if local_score and away_score else clean(row.get("hora_peru"), "")
@@ -352,7 +427,7 @@ def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> N
                 f'<div class="team-match-score">'
                 f'<span class="match-status status-{estado_cls}">{escape(estado_label)}</span>'
                 f'<strong>{escape(score)}</strong>'
-                f'<small>{escape(extra)}</small>'
+                f'<small>{extra_html}</small>'
                 f'</div>'
                 f'</a>'
             )
@@ -865,6 +940,8 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
 
 def main() -> None:
     apply_global_styles()
+    maybe_sync_live_scores()
+    install_live_clock()
     datos = load_data(data_version())
     init_state(datos)
     tab = nav_tabs()

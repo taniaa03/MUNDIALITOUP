@@ -246,6 +246,23 @@ def render_match_centre(
     render_squads(local, visitante, jugadores_local, jugadores_visitante)
 
 
+def live_clock_html(match: pd.Series, fallback: str = "") -> str:
+    estado = str(match.get("estado", "") or "").strip().lower()
+    if estado not in {"en vivo", "inprogress", "1st_half", "2nd_half", "halftime", "extratime", "aet", "penalties"}:
+        return escape(fallback)
+    minuto = fmt(match.get("minuto_actual", ""))
+    if minuto == "-":
+        return escape(fallback)
+    actualizado = str(match.get("actualizado_db", "") or "")
+    periodo = str(match.get("periodo", "") or "")
+    display = fallback or f"{minuto}'"
+    return (
+        f'<span class="live-clock" data-minute="{escape(minuto, quote=True)}" '
+        f'data-updated="{escape(actualizado, quote=True)}" '
+        f'data-period="{escape(periodo, quote=True)}">{escape(display)}</span>'
+    )
+
+
 def team_card(team: pd.Series, side: str, rendimiento: dict[str, str]) -> str:
     cls = "team-card away clickable" if side == "away" else "team-card clickable"
     stats = [
@@ -283,11 +300,11 @@ def stadium_card(project_root: Path, match: pd.Series, sede: pd.Series) -> str:
     marcador = f"{gol_local} - {gol_visitante}" if tiene_score else "vs"
     minuto = fmt(match.get("minuto_actual", ""))
     periodo = fmt(match.get("periodo", ""))
-    tiempo = f"{minuto}'" if minuto != "-" and estado.lower() in {"en vivo", "inprogress"} else periodo
+    tiempo = live_clock_html(match, f"{minuto}'") if minuto != "-" and estado.lower() in {"en vivo", "inprogress"} else escape(periodo)
     return (
         f'<a target="_self" class="stadium-panel stadium-link" href="{link("stadium", stadium=match["estadio"])}">'
         f'<div class="stadium-media">{media}</div><div class="stadium-copy">'
-        f'<div class="kicker">{escape(estado)} {escape(tiempo if tiempo != "-" else "")}</div>'
+        f'<div class="kicker">{escape(estado)} {tiempo if tiempo != "-" else ""}</div>'
         f'<h2>{escape(marcador)}</h2>'
         f'<div class="match-title" style="margin-bottom:10px;">{escape(str(match.get("equipo_local", "")))} vs {escape(str(match.get("equipo_visitante", "")))}</div>'
         f'<div class="chip-row"><span class="chip">{escape(str(match["ciudad"]))}</span>'
