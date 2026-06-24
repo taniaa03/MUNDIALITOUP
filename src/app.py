@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import base64
+import sqlite3
 import sys
 import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -47,6 +49,11 @@ from ui_components import (
     stadium_data_uri,
 )
 import viz as viz_helpers
+from consultas_sql import (
+    CONSULTA_EQUIPOS_MAS_GOLEADORES,
+    CONSULTA_TOP_GOLEADORES,
+    CONSULTA_TOP_PUNTAJE_FASE_GRUPOS,
+)
 
 
 st.set_page_config(page_title="Mundialito UP", layout="wide", initial_sidebar_state="collapsed")
@@ -68,6 +75,78 @@ def data_version() -> tuple[tuple[str, int], ...]:
 @st.cache_data(show_spinner=False)
 def load_data(_version: tuple[tuple[str, int], ...]) -> dict[str, pd.DataFrame]:
     return cargar_datos(PROJECT_ROOT)
+
+
+@st.cache_data(show_spinner=False)
+def run_sql_report(consulta: str, version: tuple[tuple[str, int], ...]) -> pd.DataFrame:
+    del version
+    db_path = PROJECT_ROOT / "data" / "mundial_2026" / "mundialito.db"
+    if not db_path.exists():
+        return pd.DataFrame()
+    try:
+        with sqlite3.connect(db_path) as conexion:
+            return pd.read_sql_query(consulta, conexion)
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return pd.DataFrame()
+
+
+def render_sql_chart(titulo: str, resultado: pd.DataFrame) -> None:
+    if resultado.empty:
+        st.info("No hay resultados disponibles todavia para esta consulta.")
+        return
+
+    if titulo == "Top 10 equipos con mas goles":
+        chart_data = resultado.copy().sort_values("goles_totales", ascending=True)
+        chart = (
+            alt.Chart(chart_data)
+            .mark_bar(cornerRadiusEnd=6)
+            .encode(
+                x=alt.X("goles_totales:Q", title="Goles"),
+                y=alt.Y("equipo:N", sort=None, title="Equipo"),
+                color=alt.Color("grupo:N", title="Grupo", scale=alt.Scale(scheme="tableau10")),
+                tooltip=["equipo:N", "grupo:N", "partidos_con_resultado:Q", "goles_totales:Q"],
+            )
+            .properties(height=360)
+        )
+    elif titulo == "Top 10 goleadores del mundial":
+        chart_data = resultado.copy()
+        chart = (
+            alt.Chart(chart_data)
+            .mark_arc(innerRadius=62, outerRadius=126)
+            .encode(
+                theta=alt.Theta("goles:Q", title="Goles"),
+                color=alt.Color("jugador:N", title="Jugador", scale=alt.Scale(scheme="category20")),
+                tooltip=["jugador:N", "equipo:N", "goles:Q"],
+            )
+            .properties(height=360)
+        )
+    else:
+        chart_data = resultado.copy()
+        chart = (
+            alt.Chart(chart_data)
+            .mark_circle(opacity=0.88, stroke="#06142E", strokeWidth=1.4)
+            .encode(
+                x=alt.X("diferencia_goles:Q", title="Diferencia de goles"),
+                y=alt.Y("puntos:Q", title="Puntos"),
+                size=alt.Size("goles_favor:Q", title="Goles a favor", scale=alt.Scale(range=[140, 1100])),
+                color=alt.Color("grupo:N", title="Grupo", scale=alt.Scale(scheme="tableau10")),
+                tooltip=[
+                    "equipo:N",
+                    "grupo:N",
+                    "partidos_jugados:Q",
+                    "ganados:Q",
+                    "empatados:Q",
+                    "perdidos:Q",
+                    "goles_favor:Q",
+                    "goles_contra:Q",
+                    "diferencia_goles:Q",
+                    "puntos:Q",
+                ],
+            )
+            .properties(height=360)
+        )
+
+    st.altair_chart(chart, use_container_width=True)
 
 
 def sync_live_data_manually() -> tuple[bool, str]:
@@ -929,6 +1008,20 @@ def render_ranking(datos: dict[str, pd.DataFrame]) -> None:
             "Altura prom.": st.column_config.NumberColumn("Altura prom.", format="%.1f"),
         },
     )
+
+    render_section_head("Consultas SQL", "las 3 consultas del proyecto")
+    consultas = [
+        ("Top 10 equipos con mas goles", CONSULTA_EQUIPOS_MAS_GOLEADORES),
+        ("Top 10 goleadores del mundial", CONSULTA_TOP_GOLEADORES),
+        ("Top 10 equipos por puntaje en fase de grupos", CONSULTA_TOP_PUNTAJE_FASE_GRUPOS),
+    ]
+    version = data_version()
+    for titulo, consulta in consultas:
+        st.markdown(f"**{titulo}**")
+        resultado = run_sql_report(consulta, version)
+        render_sql_chart(titulo, resultado)
+        if not resultado.empty:
+            st.dataframe(resultado, use_container_width=True, hide_index=True)
 
 
 def sede_points(sedes: pd.DataFrame, fixture: pd.DataFrame) -> pd.DataFrame:
