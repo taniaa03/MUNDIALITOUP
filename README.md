@@ -67,6 +67,10 @@ MUNDIALITOUP/
 |       |-- raw/
 |       `-- processed/
 |-- docs/
+|-- scripts/
+|   `-- scraping/
+|       |-- scraper_equipos_jugadores_sedes.py
+|       `-- scraper_fixture.py
 |-- src/
 |   |-- app.py
 |   |-- api_or_scraper.py
@@ -91,9 +95,20 @@ MUNDIALITOUP/
 - `src/viz.py`: graficos, bracket del torneo y mapa interactivo de sedes.
 - `src/styles.py`: estilos globales del dashboard.
 - `src/db.py`: utilidades relacionadas con almacenamiento o acceso a datos.
-- `src/api_or_scraper.py`: punto preparado para carga externa o scraping de datos.
+- `src/api_or_scraper.py`: registro de la etapa de scraping y archivos generados.
+- `scripts/scraping/scraper_equipos_jugadores_sedes.py`: obtiene selecciones, jugadores y sedes desde fuentes FIFA/On Location.
+- `scripts/scraping/scraper_fixture.py`: obtiene el fixture del Mundial 2026 y convierte horarios a zona Peru.
 
 ## Datos
+
+### Obtencion inicial por scraping
+
+La obtencion de datos externos se realizo antes del procesamiento principal:
+
+- `scraper_equipos_jugadores_sedes.py` descarga el PDF oficial de planteles FIFA, extrae equipos y jugadores con `pdfplumber`, y obtiene sedes desde la pagina FIFA/On Location con `requests` y `BeautifulSoup`.
+- `scraper_fixture.py` extrae el calendario desde FIFA World Cup 2026 Hospitality / On Location, identifica partidos, fases, grupos, sedes y horarios, y convierte la hora local de cada sede a hora de Peru.
+
+Los scripts generan CSV crudos. La aplicacion no depende del scraping en vivo para abrir el dashboard; primero guarda datos fuente en `data/mundial_2026/raw/` y luego `src/mundial_processing.py` los limpia y transforma.
 
 ### Archivos fuente
 
