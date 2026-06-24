@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import sys
-import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -16,8 +15,6 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(CURRENT_DIR))
 sys.path.append(str(PROJECT_ROOT / "scripts"))
-
-LIVE_REFRESH_SECONDS = 30
 
 from data_service import (
     ALIASES_RENDIMIENTO,
@@ -69,33 +66,17 @@ def load_data(_version: tuple[tuple[str, int], ...]) -> dict[str, pd.DataFrame]:
     return cargar_datos(PROJECT_ROOT)
 
 
-def maybe_sync_live_data() -> None:
+def sync_live_data_manually() -> tuple[bool, str]:
     env_path = PROJECT_ROOT / ".env"
     if not env_path.exists() or "BZZOIRO_API_TOKEN=" not in env_path.read_text(encoding="utf-8", errors="ignore"):
-        return
-    marker = PROJECT_ROOT / "data" / "mundial_2026" / ".last_live_sync"
-    now = time.time()
-    if marker.exists() and now - marker.stat().st_mtime < LIVE_REFRESH_SECONDS:
-        return
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(str(now), encoding="utf-8")
+        return False, "No se encontró el token de la API; se recargaron los datos locales."
     try:
         from sync_bzzoiro import sincronizar
 
         sincronizar(status="inprogress")
-    except Exception:
-        return
-
-
-def install_live_refresh() -> None:
-    components.html(
-        f"""
-        <script>
-        setTimeout(() => window.parent.location.reload(), {LIVE_REFRESH_SECONDS * 1000});
-        </script>
-        """,
-        height=0,
-    )
+        return True, "Datos de partidos actualizados correctamente."
+    except Exception as error:
+        return False, f"No se pudo consultar la API: {error}"
 
 
 def init_state(datos: dict[str, pd.DataFrame]) -> None:
@@ -159,6 +140,19 @@ def nav_tabs() -> str:
         horizontal=True,
         label_visibility="collapsed",
     )
+    if st.button("🔄 Actualizar datos", use_container_width=False):
+        with st.spinner("Actualizando partidos..."):
+            ok, message = sync_live_data_manually()
+        st.cache_data.clear()
+        st.session_state.update_notice = ("success" if ok else "warning", message)
+        st.rerun()
+    notice = st.session_state.pop("update_notice", None)
+    if notice:
+        notice_type, message = notice
+        if notice_type == "success":
+            st.success(message)
+        else:
+            st.warning(message)
     st.session_state.tab = selected
     return selected
 
@@ -310,38 +304,36 @@ def render_match_stats(match: pd.Series, estadisticas: pd.DataFrame) -> None:
         if not items:
             continue
         blocks.append(
-            f"""
-            <article class="match-live-team">
-                <h3>{escape(str(row.get("seleccion", "Equipo")))}</h3>
-                <div class="metric-strip">{''.join(items)}</div>
-            </article>
-            """
+            f'<article class="match-live-team">'
+            f'<h3>{escape(str(row.get("seleccion", "Equipo")))}</h3>'
+            f'<div class="metric-strip">{"".join(items)}</div>'
+            f'</article>'
         )
     if not blocks:
         return
-    st.markdown(
-        f"""
-        <section class="match-live-panel">
-            <div class="live-scoreline">
-                <span class="match-status status-{status_cls}">{label}</span>
-                <strong>{escape(local_score)} - {escape(away_score)}</strong>
-                <span>{escape(extra)}</span>
-            </div>
-            <div class="two-grid">{''.join(blocks)}</div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    panel_html = (
+        f'<section class="match-live-panel">'
+        f'<div class="live-scoreline">'
+        f'<span class="match-status status-{status_cls}">{escape(label)}</span>'
+        f'<strong>{escape(local_score)} - {escape(away_score)}</strong>'
+        f'<span>{escape(extra)}</span>'
+        f'</div>'
+        f'<div class="two-grid">{"".join(blocks)}</div>'
+        f'</section>'
     )
+    st.markdown(panel_html, unsafe_allow_html=True)
 
 
 def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> None:
     local = str(match.get("equipo_local", ""))
     visitante = str(match.get("equipo_visitante", ""))
+    current_match_no = int(match["match_no"])
 
     def team_rows(team: str) -> str:
         rows = fixture[(fixture["equipo_local"].eq(team)) | (fixture["equipo_visitante"].eq(team))].copy()
+        rows = rows[rows["match_no"].astype(int) != current_match_no]
         if rows.empty:
-            return '<div class="empty-state">Sin partidos cargados.</div>'
+            return '<div class="empty-state">Sin otros partidos cargados.</div>'
         rows = rows.sort_values("match_no")
         items = []
         for _, row in rows.iterrows():
@@ -349,36 +341,34 @@ def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> N
             local_score = score_value(row.get("goles_local"))
             away_score = score_value(row.get("goles_visitante"))
             score = f"{local_score} - {away_score}" if local_score and away_score else clean(row.get("hora_peru"), "")
-            active = " active-mini" if int(row["match_no"]) == int(match["match_no"]) else ""
             items.append(
-                f"""
-                <a target="_self" class="team-match-row{active}" href="{app_url("partidos", match=int(row["match_no"]))}">
-                    <div>
-                        <span>M{int(row["match_no"])} | {escape(str(row.get("fecha_peru", "")))}</span>
-                        <strong>{escape(str(row.get("equipo_local", "")))} vs {escape(str(row.get("equipo_visitante", "")))}</strong>
-                    </div>
-                    <div class="team-match-score">
-                        <span class="match-status status-{estado_cls}">{estado_label}</span>
-                        <strong>{escape(score)}</strong>
-                        <small>{escape(extra)}</small>
-                    </div>
-                </a>
-                """
+                f'<a target="_self" class="team-match-row" '
+                f'href="{app_url("partidos", match=int(row["match_no"]))}">'
+                f'<div>'
+                f'<span>M{int(row["match_no"])} | {escape(str(row.get("fecha_peru", "")))}</span>'
+                f'<strong>{escape(str(row.get("equipo_local", "")))} vs '
+                f'{escape(str(row.get("equipo_visitante", "")))}</strong>'
+                f'</div>'
+                f'<div class="team-match-score">'
+                f'<span class="match-status status-{estado_cls}">{escape(estado_label)}</span>'
+                f'<strong>{escape(score)}</strong>'
+                f'<small>{escape(extra)}</small>'
+                f'</div>'
+                f'</a>'
             )
         return "".join(items)
 
-    st.markdown(
-        f"""
-        <section class="team-match-history">
-            <div class="section-head"><h2>Juegos de estas selecciones</h2><span>fixture y resultados del torneo</span></div>
-            <div class="two-grid">
-                <article><h3>{escape(local)}</h3>{team_rows(local)}</article>
-                <article><h3>{escape(visitante)}</h3>{team_rows(visitante)}</article>
-            </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    history_html = (
+        f'<section class="team-match-history">'
+        f'<div class="section-head"><h2>Otros juegos de estas selecciones</h2>'
+        f'<span>fixture y resultados del torneo</span></div>'
+        f'<div class="two-grid">'
+        f'<article><h3>{escape(local)}</h3>{team_rows(local)}</article>'
+        f'<article><h3>{escape(visitante)}</h3>{team_rows(visitante)}</article>'
+        f'</div>'
+        f'</section>'
     )
+    st.markdown(history_html, unsafe_allow_html=True)
 
 
 def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
@@ -875,8 +865,6 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
 
 def main() -> None:
     apply_global_styles()
-    maybe_sync_live_data()
-    install_live_refresh()
     datos = load_data(data_version())
     init_state(datos)
     tab = nav_tabs()
