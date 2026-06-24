@@ -48,6 +48,28 @@ selecciones, los jugadores y las sedes del Mundial 2026.
 - HTML y CSS
 - OpenPyXL
 
+## APIs externas
+
+El proyecto cuenta con dos integraciones funcionales:
+
+- **TheSportsDB:** obtiene fotografías de jugadores y las guarda en
+  `data/mundial_2026/processed/fotos_jugadores.csv`.
+- **Bzzoiro Sports Data:** sincroniza partidos, marcadores, estadísticas,
+  incidencias y alineaciones con
+  `data/mundial_2026/mundialito.db`.
+
+La documentación de endpoints, autenticación, límites, comandos, persistencia,
+manejo de errores y pruebas funcionales está en
+[`docs/apis.md`](docs/apis.md).
+
+Para configurar Bzzoiro:
+
+```powershell
+Copy-Item .env.example .env
+# Editar .env y colocar BZZOIRO_API_TOKEN
+venv\Scripts\python.exe scripts\sync_bzzoiro.py
+```
+
 ## Fotos de jugadores
 
 Las fotos se consultan mediante la API gratuita de TheSportsDB y se guardan
