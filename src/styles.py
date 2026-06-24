@@ -397,6 +397,96 @@ def apply_global_styles() -> None:
         .flag-sm { width: 32px; height: 32px; }
         .flag-lg { width: 64px; height: 64px; }
         .flag-xl { width: 96px; height: 96px; }
+        .flag-xs { width: 22px; height: 22px; border-width: 2px; }
+
+        .standings-section {
+            margin-top: 22px;
+        }
+
+        .standings-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .standings-card {
+            overflow: hidden;
+            border-radius: 18px;
+            background: #FFFFFF;
+            border: 1px solid #C6D4E7;
+            box-shadow: 0 18px 42px rgba(6,20,46,.09);
+        }
+
+        .standings-title {
+            padding: 13px 14px 11px;
+            color: #FFFFFF;
+            background: linear-gradient(135deg, var(--ink), var(--blue));
+            font-family: "Barlow Condensed", sans-serif;
+            font-size: 1.45rem;
+            line-height: .9;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .standings-card table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .standings-card th,
+        .standings-card td {
+            padding: 8px 6px;
+            border-bottom: 1px solid #E0E8F3;
+            color: var(--ink);
+            font-size: .7rem;
+            font-weight: 900;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .standings-card th {
+            color: var(--muted);
+            background: #F7FAFE;
+            text-transform: uppercase;
+        }
+
+        .standings-card th:nth-child(2),
+        .standings-card td:nth-child(2) {
+            text-align: left;
+        }
+
+        .standings-card tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .stand-team {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 125px;
+        }
+
+        .stand-team span {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .standings-card tr.qualified td {
+            background: rgba(8,160,69,.12);
+        }
+
+        .standings-card tr.qualified td:first-child {
+            border-left: 4px solid var(--green);
+        }
+
+        .standings-card tr.alive td {
+            background: rgba(214,163,41,.13);
+        }
+
+        .standings-card tr.alive td:first-child {
+            border-left: 4px solid var(--gold);
+        }
 
         .match-centre {
             display: grid;
@@ -1761,7 +1851,8 @@ def apply_global_styles() -> None:
             .three-grid,
             .fixture-grid,
             .result-grid,
-            .viz-grid {
+            .viz-grid,
+            .standings-grid {
                 grid-template-columns: 1fr;
             }
             .group-grid,
@@ -1811,6 +1902,12 @@ def apply_global_styles() -> None:
             }
             .pie-layout {
                 grid-template-columns: 1fr;
+            }
+            .standings-card {
+                overflow-x: auto;
+            }
+            .stand-team {
+                min-width: 112px;
             }
         }
         </style>

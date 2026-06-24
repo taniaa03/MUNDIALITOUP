@@ -173,12 +173,6 @@ def nav_tabs() -> str:
         horizontal=True,
         label_visibility="collapsed",
     )
-    if st.button("🔄 Actualizar datos", use_container_width=False):
-        with st.spinner("Actualizando partidos..."):
-            ok, message = sync_live_data_manually()
-        st.cache_data.clear()
-        st.session_state.update_notice = ("success" if ok else "warning", message)
-        st.rerun()
     notice = st.session_state.pop("update_notice", None)
     if notice:
         notice_type, message = notice
@@ -376,6 +370,112 @@ def render_match_stats(match: pd.Series, estadisticas: pd.DataFrame) -> None:
     st.markdown(panel_html, unsafe_allow_html=True)
 
 
+def calcular_tablas_grupos(fixture: pd.DataFrame, equipos: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    tablas: dict[str, pd.DataFrame] = {}
+    base = equipos[["seleccion", "grupo", "codigo_fifa"]].drop_duplicates().copy()
+    for grupo, grupo_df in base.groupby("grupo"):
+        registros = {
+            row["seleccion"]: {
+                "seleccion": row["seleccion"],
+                "codigo_fifa": row.get("codigo_fifa", ""),
+                "PJ": 0,
+                "G": 0,
+                "E": 0,
+                "P": 0,
+                "GF": 0,
+                "GC": 0,
+                "DG": 0,
+                "Pts": 0,
+            }
+            for _, row in grupo_df.iterrows()
+        }
+        partidos = fixture[
+            fixture["grupo"].astype(str).eq(str(grupo))
+            & fixture["fase"].astype(str).str.lower().eq("fase de grupos")
+            & fixture["goles_local"].notna()
+            & fixture["goles_visitante"].notna()
+        ]
+        for _, partido in partidos.iterrows():
+            local = str(partido.get("equipo_local", ""))
+            visitante = str(partido.get("equipo_visitante", ""))
+            if local not in registros or visitante not in registros:
+                continue
+            gl = int(float(partido["goles_local"]))
+            gv = int(float(partido["goles_visitante"]))
+            registros[local]["PJ"] += 1
+            registros[visitante]["PJ"] += 1
+            registros[local]["GF"] += gl
+            registros[local]["GC"] += gv
+            registros[visitante]["GF"] += gv
+            registros[visitante]["GC"] += gl
+            if gl > gv:
+                registros[local]["G"] += 1
+                registros[visitante]["P"] += 1
+                registros[local]["Pts"] += 3
+            elif gl < gv:
+                registros[visitante]["G"] += 1
+                registros[local]["P"] += 1
+                registros[visitante]["Pts"] += 3
+            else:
+                registros[local]["E"] += 1
+                registros[visitante]["E"] += 1
+                registros[local]["Pts"] += 1
+                registros[visitante]["Pts"] += 1
+        tabla = pd.DataFrame(registros.values())
+        tabla["DG"] = tabla["GF"] - tabla["GC"]
+        tabla = tabla.sort_values(
+            ["Pts", "DG", "GF", "seleccion"],
+            ascending=[False, False, False, True],
+        ).reset_index(drop=True)
+        tabla.insert(0, "Pos", range(1, len(tabla) + 1))
+        tablas[str(grupo)] = tabla
+    return dict(sorted(tablas.items(), key=lambda item: item[0]))
+
+
+def render_tablas_grupos(fixture: pd.DataFrame, equipos: pd.DataFrame) -> None:
+    tablas = calcular_tablas_grupos(fixture, equipos)
+    cards = []
+    header = (
+        "<thead><tr><th>#</th><th>Selección</th><th>PJ</th><th>G</th>"
+        "<th>E</th><th>P</th><th>GF</th><th>GC</th><th>DG</th><th>Pts</th></tr></thead>"
+    )
+    for grupo, tabla in tablas.items():
+        rows = []
+        for _, row in tabla.iterrows():
+            pos = int(row["Pos"])
+            cls = "qualified" if pos <= 2 else "alive" if pos == 3 else ""
+            team = escape(str(row["seleccion"]))
+            flag = flag_img(row.get("codigo_fifa", ""), str(row["seleccion"]), "xs")
+            rows.append(
+                f'<tr class="{cls}">'
+                f"<td>{pos}</td>"
+                f'<td><div class="stand-team">{flag}<span>{team}</span></div></td>'
+                f'<td>{int(row["PJ"])}</td>'
+                f'<td>{int(row["G"])}</td>'
+                f'<td>{int(row["E"])}</td>'
+                f'<td>{int(row["P"])}</td>'
+                f'<td>{int(row["GF"])}</td>'
+                f'<td>{int(row["GC"])}</td>'
+                f'<td>{int(row["DG"])}</td>'
+                f'<td><strong>{int(row["Pts"])}</strong></td>'
+                "</tr>"
+            )
+        cards.append(
+            f'<article class="standings-card">'
+            f'<div class="standings-title">Grupo {escape(str(grupo))}</div>'
+            f'<table>{header}<tbody>{"".join(rows)}</tbody></table>'
+            "</article>"
+        )
+    st.markdown(
+        '<section class="standings-section">'
+        '<div class="section-head"><h2>Tabla de grupos</h2>'
+        '<span>verde: clasificación directa | amarillo: pelea por mejor tercero</span></div>'
+        f'<div class="standings-grid">{"".join(cards)}</div>'
+        "</section>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> None:
     local = str(match.get("equipo_local", ""))
     visitante = str(match.get("equipo_visitante", ""))
@@ -453,6 +553,8 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    render_tablas_grupos(fixture, equipos)
 
     render_section_head("Panel visual", "metricas del torneo")
     partidos_sede = fixture.groupby("ciudad").size().sort_values(ascending=False).head(10)
