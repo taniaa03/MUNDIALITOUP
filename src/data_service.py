@@ -1,15 +1,37 @@
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
+import time
 import unicodedata
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 import pandas as pd
 
 from mundial_processing import cargar_o_procesar_mundial
+
+
+F = TypeVar("F", bound=Callable[..., Any])
+logger = logging.getLogger(__name__)
+
+
+def medir_tiempo(funcion: F) -> F:
+    """Registra cuanto demora una funcion critica de carga/procesamiento."""
+
+    @wraps(funcion)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        inicio = time.perf_counter()
+        try:
+            return funcion(*args, **kwargs)
+        finally:
+            duracion = time.perf_counter() - inicio
+            logger.info("%s termino en %.3f segundos", funcion.__name__, duracion)
+
+    return wrapper  # type: ignore[return-value]
 
 
 ALIASES_RENDIMIENTO = {
@@ -41,6 +63,7 @@ def normalizar_texto(valor: object) -> str:
     return re.sub(r"\s+", " ", texto).strip()
 
 
+@medir_tiempo
 def cargar_datos(project_root: Path) -> dict[str, pd.DataFrame]:
     datos = cargar_o_procesar_mundial()
     aplicar_actualizaciones_sqlite(project_root, datos)
