@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -50,6 +51,9 @@ import viz as viz_helpers
 
 st.set_page_config(page_title="Mundialito UP", layout="wide", initial_sidebar_state="collapsed")
 
+LIVE_SCORE_REFRESH_SECONDS = 60
+LIVE_SYNC_MARKER = PROJECT_ROOT / "data" / "mundial_2026" / ".last_live_sync"
+
 
 def data_version() -> tuple[tuple[str, int], ...]:
     processed_dir = PROJECT_ROOT / "data" / "mundial_2026" / "processed"
@@ -74,6 +78,25 @@ def sync_live_data_manually() -> tuple[bool, str]:
         from sync_bzzoiro import sincronizar
 
         sincronizar(status="inprogress")
+        return True, "Datos de partidos actualizados correctamente."
+    except Exception as error:
+        return False, f"No se pudo consultar la API: {error}"
+
+
+def maybe_sync_live_data() -> tuple[bool, str]:
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists() or "BZZOIRO_API_TOKEN=" not in env_path.read_text(encoding="utf-8", errors="ignore"):
+        return False, "No se encontro el token de la API; se recargaron los datos locales."
+    now = time.time()
+    if LIVE_SYNC_MARKER.exists() and now - LIVE_SYNC_MARKER.stat().st_mtime < LIVE_SCORE_REFRESH_SECONDS:
+        return True, "Sincronizacion reciente; se usan los datos locales actualizados."
+    try:
+        from sync_bzzoiro import sincronizar
+
+        sincronizar(status="inprogress")
+        LIVE_SYNC_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        LIVE_SYNC_MARKER.write_text(str(now), encoding="utf-8")
+        st.cache_data.clear()
         return True, "Datos de partidos actualizados correctamente."
     except Exception as error:
         return False, f"No se pudo consultar la API: {error}"
@@ -106,6 +129,11 @@ def install_live_clock() -> None:
         }};
         tickLiveClock();
         window.setInterval(tickLiveClock, 1000);
+        window.setInterval(() => {{
+          if (window.parent.document.visibilityState === 'visible') {{
+            window.parent.location.reload();
+          }}
+        }}, {LIVE_SCORE_REFRESH_SECONDS * 1000});
         </script>
         """,
         height=0,
@@ -1021,6 +1049,7 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
 def main() -> None:
     apply_global_styles()
     install_live_clock()
+    maybe_sync_live_data()
     datos = load_data(data_version())
     init_state(datos)
     tab = nav_tabs()
