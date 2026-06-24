@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import sys
-import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -16,7 +15,6 @@ CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(CURRENT_DIR))
 sys.path.append(str(PROJECT_ROOT / "scripts"))
-LIVE_SCORE_REFRESH_SECONDS = 60
 
 from data_service import (
     ALIASES_RENDIMIENTO,
@@ -81,25 +79,6 @@ def sync_live_data_manually() -> tuple[bool, str]:
         return False, f"No se pudo consultar la API: {error}"
 
 
-def maybe_sync_live_scores() -> None:
-    env_path = PROJECT_ROOT / ".env"
-    if not env_path.exists() or "BZZOIRO_API_TOKEN=" not in env_path.read_text(encoding="utf-8", errors="ignore"):
-        return
-    marker = PROJECT_ROOT / "data" / "mundial_2026" / ".last_live_sync"
-    now = time.time()
-    if marker.exists() and now - marker.stat().st_mtime < LIVE_SCORE_REFRESH_SECONDS:
-        return
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(str(now), encoding="utf-8")
-    try:
-        from sync_bzzoiro import sincronizar
-
-        sincronizar(status="inprogress")
-        st.cache_data.clear()
-    except Exception:
-        return
-
-
 def install_live_clock() -> None:
     components.html(
         f"""
@@ -127,7 +106,6 @@ def install_live_clock() -> None:
         }};
         tickLiveClock();
         window.setInterval(tickLiveClock, 1000);
-        window.setTimeout(() => window.parent.location.reload(), {LIVE_SCORE_REFRESH_SECONDS * 1000});
         </script>
         """,
         height=0,
@@ -940,7 +918,6 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
 
 def main() -> None:
     apply_global_styles()
-    maybe_sync_live_scores()
     install_live_clock()
     datos = load_data(data_version())
     init_state(datos)
