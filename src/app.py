@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import sys
+import time
 from html import escape
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -14,6 +15,9 @@ import streamlit.components.v1 as components
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 sys.path.append(str(CURRENT_DIR))
+sys.path.append(str(PROJECT_ROOT / "scripts"))
+
+LIVE_REFRESH_SECONDS = 30
 
 from data_service import (
     ALIASES_RENDIMIENTO,
@@ -53,12 +57,45 @@ st.set_page_config(page_title="Mundialito UP", layout="wide", initial_sidebar_st
 def data_version() -> tuple[tuple[str, int], ...]:
     processed_dir = PROJECT_ROOT / "data" / "mundial_2026" / "processed"
     files = sorted(processed_dir.glob("*.csv"))
-    return tuple((path.name, path.stat().st_mtime_ns) for path in files)
+    version = [(path.name, path.stat().st_mtime_ns) for path in files]
+    db_path = PROJECT_ROOT / "data" / "mundial_2026" / "mundialito.db"
+    if db_path.exists():
+        version.append((db_path.name, db_path.stat().st_mtime_ns))
+    return tuple(version)
 
 
 @st.cache_data(show_spinner=False)
 def load_data(_version: tuple[tuple[str, int], ...]) -> dict[str, pd.DataFrame]:
     return cargar_datos(PROJECT_ROOT)
+
+
+def maybe_sync_live_data() -> None:
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists() or "BZZOIRO_API_TOKEN=" not in env_path.read_text(encoding="utf-8", errors="ignore"):
+        return
+    marker = PROJECT_ROOT / "data" / "mundial_2026" / ".last_live_sync"
+    now = time.time()
+    if marker.exists() and now - marker.stat().st_mtime < LIVE_REFRESH_SECONDS:
+        return
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(str(now), encoding="utf-8")
+    try:
+        from sync_bzzoiro import sincronizar
+
+        sincronizar(status="inprogress")
+    except Exception:
+        return
+
+
+def install_live_refresh() -> None:
+    components.html(
+        f"""
+        <script>
+        setTimeout(() => window.parent.location.reload(), {LIVE_REFRESH_SECONDS * 1000});
+        </script>
+        """,
+        height=0,
+    )
 
 
 def init_state(datos: dict[str, pd.DataFrame]) -> None:
@@ -150,6 +187,29 @@ def clean(value: object, fallback: str = "Por definir") -> str:
     return str(value)
 
 
+def score_value(value: object) -> str:
+    if pd.isna(value) or str(value).strip() == "":
+        return ""
+    try:
+        return str(int(float(value)))
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def match_status(row: pd.Series) -> tuple[str, str, str]:
+    raw = str(row.get("estado", "") or "").strip().lower()
+    live_values = {"en vivo", "inprogress", "1st_half", "2nd_half", "halftime", "extratime", "aet", "penalties"}
+    if raw in live_values:
+        minute = score_value(row.get("minuto_actual"))
+        extra = f"{minute}'" if minute else clean(row.get("periodo"), "")
+        return "En vivo", "live", extra
+    if raw in {"finalizado", "finished"}:
+        return "Finalizado", "finished", ""
+    if raw in {"cancelled", "canceled", "postponed"}:
+        return raw.title(), "paused", ""
+    return "Programado", "scheduled", ""
+
+
 def asset_data_uri(relative_path: str) -> str:
     path = PROJECT_ROOT / relative_path
     if not path.exists():
@@ -167,13 +227,22 @@ def match_card_button(row: pd.Series, key: str, active: bool = False) -> None:
     codigo_local = "" if pd.isna(row.get("codigo_local")) else row.get("codigo_local")
     codigo_visitante = "" if pd.isna(row.get("codigo_visitante")) else row.get("codigo_visitante")
     match_no = int(row["match_no"])
+    estado_label, estado_cls, estado_extra = match_status(row)
+    gol_local = score_value(row.get("goles_local"))
+    gol_visitante = score_value(row.get("goles_visitante"))
+    score_local = f'<strong class="tile-score">{gol_local}</strong>' if gol_local else ""
+    score_visitante = f'<strong class="tile-score">{gol_visitante}</strong>' if gol_visitante else ""
     st.markdown(
         f"""
         <a class="card-link" target="_self" href="{app_url("partidos", match=match_no)}">
         <div class="{cls}">
+            <div class="tile-status-row">
+                <span class="match-status status-{estado_cls}">{estado_label}</span>
+                <span>{estado_extra}</span>
+            </div>
             <div class="tile-meta">M{int(row["match_no"])} · {grupo} · {clean(row.get("fase"))}</div>
-            <div class="tile-team">{flag_img(codigo_local, local, "sm")}<span>{local}</span></div>
-            <div class="tile-team">{flag_img(codigo_visitante, visitante, "sm")}<span>{visitante}</span></div>
+            <div class="tile-team">{flag_img(codigo_local, local, "sm")}<span>{local}</span>{score_local}</div>
+            <div class="tile-team">{flag_img(codigo_visitante, visitante, "sm")}<span>{visitante}</span>{score_visitante}</div>
             <div class="tile-meta">{clean(row.get("fecha_peru"))} · {clean(row.get("hora_peru"))} · {clean(row.get("ciudad"))}</div>
             <div class="tile-venue">{clean(row.get("estadio"))}</div>
         </div>
@@ -204,6 +273,111 @@ def render_match_preview(datos: dict[str, pd.DataFrame]) -> None:
         rendimiento_equipo(str(visitante["seleccion"]), datos["rendimiento_companero"]),
         historial_equipo(str(local["seleccion"]), datos["enfrentamientos_companero"]),
         historial_equipo(str(visitante["seleccion"]), datos["enfrentamientos_companero"]),
+    )
+    render_match_stats(match, datos.get("estadisticas_partido", pd.DataFrame()))
+    render_team_tournament_matches(match, fixture)
+
+
+def render_match_stats(match: pd.Series, estadisticas: pd.DataFrame) -> None:
+    if estadisticas.empty or "id_partido" not in estadisticas.columns:
+        return
+    id_partido = int(match["id_partido"])
+    stats = estadisticas[estadisticas["id_partido"].astype(int) == id_partido].copy()
+    if stats.empty:
+        return
+
+    label, status_cls, extra = match_status(match)
+    local_score = score_value(match.get("goles_local")) or "-"
+    away_score = score_value(match.get("goles_visitante")) or "-"
+    metrics = [
+        ("Posesion", "posesion", "%"),
+        ("Tiros", "tiros", ""),
+        ("Al arco", "tiros_puerta", ""),
+        ("xG", "xg", ""),
+        ("Corners", "corners", ""),
+        ("Faltas", "faltas", ""),
+        ("Pases", "pases", ""),
+        ("Precision", "precision_pases", "%"),
+    ]
+    blocks = []
+    for _, row in stats.iterrows():
+        items = []
+        for title, col, suffix in metrics:
+            if col not in stats.columns or pd.isna(row.get(col)):
+                continue
+            value = fmt(row.get(col))
+            items.append(f"<div><span>{escape(title)}</span><strong>{escape(value)}{suffix}</strong></div>")
+        if not items:
+            continue
+        blocks.append(
+            f"""
+            <article class="match-live-team">
+                <h3>{escape(str(row.get("seleccion", "Equipo")))}</h3>
+                <div class="metric-strip">{''.join(items)}</div>
+            </article>
+            """
+        )
+    if not blocks:
+        return
+    st.markdown(
+        f"""
+        <section class="match-live-panel">
+            <div class="live-scoreline">
+                <span class="match-status status-{status_cls}">{label}</span>
+                <strong>{escape(local_score)} - {escape(away_score)}</strong>
+                <span>{escape(extra)}</span>
+            </div>
+            <div class="two-grid">{''.join(blocks)}</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_team_tournament_matches(match: pd.Series, fixture: pd.DataFrame) -> None:
+    local = str(match.get("equipo_local", ""))
+    visitante = str(match.get("equipo_visitante", ""))
+
+    def team_rows(team: str) -> str:
+        rows = fixture[(fixture["equipo_local"].eq(team)) | (fixture["equipo_visitante"].eq(team))].copy()
+        if rows.empty:
+            return '<div class="empty-state">Sin partidos cargados.</div>'
+        rows = rows.sort_values("match_no")
+        items = []
+        for _, row in rows.iterrows():
+            estado_label, estado_cls, extra = match_status(row)
+            local_score = score_value(row.get("goles_local"))
+            away_score = score_value(row.get("goles_visitante"))
+            score = f"{local_score} - {away_score}" if local_score and away_score else clean(row.get("hora_peru"), "")
+            active = " active-mini" if int(row["match_no"]) == int(match["match_no"]) else ""
+            items.append(
+                f"""
+                <a target="_self" class="team-match-row{active}" href="{app_url("partidos", match=int(row["match_no"]))}">
+                    <div>
+                        <span>M{int(row["match_no"])} | {escape(str(row.get("fecha_peru", "")))}</span>
+                        <strong>{escape(str(row.get("equipo_local", "")))} vs {escape(str(row.get("equipo_visitante", "")))}</strong>
+                    </div>
+                    <div class="team-match-score">
+                        <span class="match-status status-{estado_cls}">{estado_label}</span>
+                        <strong>{escape(score)}</strong>
+                        <small>{escape(extra)}</small>
+                    </div>
+                </a>
+                """
+            )
+        return "".join(items)
+
+    st.markdown(
+        f"""
+        <section class="team-match-history">
+            <div class="section-head"><h2>Juegos de estas selecciones</h2><span>fixture y resultados del torneo</span></div>
+            <div class="two-grid">
+                <article><h3>{escape(local)}</h3>{team_rows(local)}</article>
+                <article><h3>{escape(visitante)}</h3>{team_rows(visitante)}</article>
+            </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -258,7 +432,7 @@ def render_inicio(datos: dict[str, pd.DataFrame]) -> None:
         unsafe_allow_html=True,
     )
 
-    render_section_head("Próximos partidos", "primeros cruces del fixture")
+    render_section_head("En vivo y siguientes", "partidos activos primero")
     featured = proximos_partidos(fixture, 4)
     cols = st.columns(4)
     for idx, (_, row) in enumerate(featured.iterrows()):
@@ -283,7 +457,7 @@ def render_partidos(datos: dict[str, pd.DataFrame]) -> None:
         "Todas",
     )
 
-    render_section_head("Próximos partidos", "primeros registros cargados")
+    render_section_head("En vivo y siguientes", "prioridad actual del torneo")
     recent_cols = st.columns(4)
     for idx, (_, row) in enumerate(proximos_partidos(filtered if not filtered.empty else fixture, 4).iterrows()):
         with recent_cols[idx % 4]:
@@ -293,7 +467,7 @@ def render_partidos(datos: dict[str, pd.DataFrame]) -> None:
                 active=int(row["match_no"]) == st.session_state.selected_match,
             )
 
-    render_section_head("Previa seleccionada", "se actualiza al elegir un partido")
+    render_section_head("Centro del partido", "estado, marcador y metricas si ya existen")
     render_match_preview(datos)
 
     render_section_head("Todos los partidos por fecha", f"{len(filtered)} partidos")
@@ -362,7 +536,7 @@ def render_paises(datos: dict[str, pd.DataFrame]) -> None:
                 unsafe_allow_html=True,
             )
         with c2:
-            st.markdown('<div class="panel-title">Partidos que jugará</div>', unsafe_allow_html=True)
+            st.markdown('<div class="panel-title">Partidos del torneo</div>', unsafe_allow_html=True)
             for _, match in team_fixture.iterrows():
                 match_card_button(
                     match,
@@ -701,6 +875,8 @@ def render_sedes(datos: dict[str, pd.DataFrame]) -> None:
 
 def main() -> None:
     apply_global_styles()
+    maybe_sync_live_data()
+    install_live_refresh()
     datos = load_data(data_version())
     init_state(datos)
     tab = nav_tabs()

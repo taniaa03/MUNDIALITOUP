@@ -227,8 +227,15 @@ def render_match_centre(
     historial_local: list[dict[str, str]],
     historial_visitante: list[dict[str, str]],
 ) -> None:
+    estado = str(match.get("estado", "") or "").lower()
+    if estado in {"en vivo", "inprogress", "1st_half", "2nd_half", "halftime", "extratime", "aet", "penalties"}:
+        title = "Centro en vivo"
+    elif estado in {"finalizado", "finished"}:
+        title = "Resumen del partido"
+    else:
+        title = "Previa del partido"
     st.markdown(
-        f'<div class="section-head"><h2>Previa del partido</h2><span>M{int(match["match_no"])} | {escape(str(match["fase"]))}</span></div>'
+        f'<div class="section-head"><h2>{title}</h2><span>M{int(match["match_no"])} | {escape(str(match["fase"]))}</span></div>'
         f'<section class="match-centre">{team_card(local, "home", rendimiento_local)}'
         f'{stadium_card(project_root, match, sede)}'
         f'{team_card(visitante, "away", rendimiento_visitante)}</section>',
@@ -269,10 +276,20 @@ def stadium_card(project_root: Path, match: pd.Series, sede: pd.Series) -> str:
         else f'<div class="pitch-lines"></div>'
     )
     capacity = fmt(sede.get("capacidad_aprox", "-"))
+    estado = str(match.get("estado", "Programado"))
+    gol_local = fmt(match.get("goles_local", ""))
+    gol_visitante = fmt(match.get("goles_visitante", ""))
+    tiene_score = gol_local != "-" and gol_visitante != "-"
+    marcador = f"{gol_local} - {gol_visitante}" if tiene_score else "vs"
+    minuto = fmt(match.get("minuto_actual", ""))
+    periodo = fmt(match.get("periodo", ""))
+    tiempo = f"{minuto}'" if minuto != "-" and estado.lower() in {"en vivo", "inprogress"} else periodo
     return (
         f'<a target="_self" class="stadium-panel stadium-link" href="{link("stadium", stadium=match["estadio"])}">'
         f'<div class="stadium-media">{media}</div><div class="stadium-copy">'
-        f'<div class="kicker">Sede del partido</div><h2>{escape(str(match["estadio"]))}</h2>'
+        f'<div class="kicker">{escape(estado)} {escape(tiempo if tiempo != "-" else "")}</div>'
+        f'<h2>{escape(marcador)}</h2>'
+        f'<div class="match-title" style="margin-bottom:10px;">{escape(str(match.get("equipo_local", "")))} vs {escape(str(match.get("equipo_visitante", "")))}</div>'
         f'<div class="chip-row"><span class="chip">{escape(str(match["ciudad"]))}</span>'
         f'<span class="chip">{escape(str(match["pais_sede"]))}</span>'
         f'<span class="chip">{escape(str(match["fecha_peru"]))}</span>'

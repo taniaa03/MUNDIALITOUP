@@ -25,6 +25,8 @@ Thumbs.db
 
 # Configuraciones locales de Streamlit (si usas secretos)
 .streamlit/secrets.toml
+.env
+data/mundial_2026/.last_live_sync
 
 # Archivos de editor (VSCode, PyCharm, etc.)
 .vscode/

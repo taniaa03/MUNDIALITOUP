@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,7 @@ def normalizar_texto(valor: object) -> str:
 
 def cargar_datos(project_root: Path) -> dict[str, pd.DataFrame]:
     datos = cargar_o_procesar_mundial()
+    aplicar_actualizaciones_sqlite(project_root, datos)
     fotos_path = project_root / "data" / "mundial_2026" / "processed" / "fotos_jugadores.csv"
     if fotos_path.exists() and not datos["fact_jugadores"].empty:
         fotos = pd.read_csv(fotos_path, usecols=["id_jugador", "foto_url"])
@@ -60,7 +63,131 @@ def cargar_datos(project_root: Path) -> dict[str, pd.DataFrame]:
     datos["enfrentamientos_companero"] = (
         pd.read_csv(enfrentamientos_path) if enfrentamientos_path.exists() else pd.DataFrame()
     )
+    datos["estadisticas_partido"] = cargar_estadisticas_sqlite(project_root)
     return datos
+
+
+def aplicar_actualizaciones_sqlite(project_root: Path, datos: dict[str, pd.DataFrame]) -> None:
+    db_path = project_root / "data" / "mundial_2026" / "mundialito.db"
+    if not db_path.exists() or datos.get("fact_fixture", pd.DataFrame()).empty:
+        return
+    try:
+        with sqlite3.connect(db_path) as conexion:
+            partidos_db = pd.read_sql_query(
+                """
+                SELECT
+                    id_partido,
+                    match_no,
+                    api_id,
+                    estado,
+                    goles_local,
+                    goles_visitante,
+                    goles_local_descanso,
+                    goles_visitante_descanso,
+                    minuto_actual,
+                    periodo,
+                    fecha_hora_utc,
+                    clima,
+                    asistencia,
+                    actualizado_en AS actualizado_db
+                FROM partidos
+                """,
+                conexion,
+            )
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return
+    if partidos_db.empty:
+        return
+
+    fixture = datos["fact_fixture"].copy()
+    merged = fixture.merge(
+        partidos_db,
+        on=["id_partido", "match_no"],
+        how="left",
+        suffixes=("", "_db"),
+    )
+    for col in [
+        "api_id",
+        "estado",
+        "goles_local",
+        "goles_visitante",
+        "goles_local_descanso",
+        "goles_visitante_descanso",
+        "minuto_actual",
+        "periodo",
+        "fecha_hora_utc",
+        "clima",
+        "asistencia",
+        "actualizado_db",
+    ]:
+        db_col = f"{col}_db"
+        if db_col in merged.columns:
+            merged[col] = merged[db_col].combine_first(merged[col] if col in merged.columns else pd.NA)
+            merged = merged.drop(columns=[db_col])
+    if {"goles_local", "goles_visitante"}.issubset(merged.columns):
+        merged["resultado"] = merged.get("resultado", "").astype("object")
+        tiene_score = merged["goles_local"].notna() & merged["goles_visitante"].notna()
+        merged.loc[tiene_score, "resultado"] = (
+            merged.loc[tiene_score, "goles_local"].astype("Int64").astype(str)
+            + "-"
+            + merged.loc[tiene_score, "goles_visitante"].astype("Int64").astype(str)
+        )
+    datos["fact_fixture"] = merged
+
+
+def cargar_estadisticas_sqlite(project_root: Path) -> pd.DataFrame:
+    db_path = project_root / "data" / "mundial_2026" / "mundialito.db"
+    if not db_path.exists():
+        return pd.DataFrame()
+    try:
+        with sqlite3.connect(db_path) as conexion:
+            columnas = {
+                row[1]
+                for row in conexion.execute("PRAGMA table_info(estadisticas_partido)").fetchall()
+            }
+            extras = [
+                col
+                for col in [
+                    "xg",
+                    "tiros_fuera",
+                    "tiros_bloqueados",
+                    "tiros_area",
+                    "tiros_fuera_area",
+                    "poste",
+                    "ataques",
+                    "ataques_peligrosos",
+                ]
+                if col in columnas
+            ]
+            cols_sql = ", ".join(f"ep.{col}" for col in extras)
+            if cols_sql:
+                cols_sql = ", " + cols_sql
+            return pd.read_sql_query(
+                f"""
+                SELECT
+                    ep.id_partido,
+                    ep.id_equipo,
+                    s.seleccion,
+                    ep.posesion,
+                    ep.tiros,
+                    ep.tiros_puerta,
+                    ep.corners,
+                    ep.faltas,
+                    ep.fueras_juego,
+                    ep.tarjetas_amarillas,
+                    ep.tarjetas_rojas,
+                    ep.pases,
+                    ep.pases_correctos,
+                    ep.precision_pases,
+                    ep.atajadas
+                    {cols_sql}
+                FROM estadisticas_partido ep
+                LEFT JOIN selecciones s ON s.id_equipo = ep.id_equipo
+                """,
+                conexion,
+            )
+    except (sqlite3.Error, pd.errors.DatabaseError):
+        return pd.DataFrame()
 
 
 def resumen_torneo(
@@ -113,11 +240,37 @@ def filtrar_fixture(
         df = df[df["estadio"] == estadio]
     if fase != "Todas":
         df = df[df["fase"] == fase]
-    return df.sort_values("match_no")
+    return ordenar_partidos(df)
 
 
 def proximos_partidos(fixture: pd.DataFrame, limit: int = 4) -> pd.DataFrame:
-    return fixture.sort_values(["fecha_peru", "match_no"]).head(limit).copy()
+    if fixture.empty:
+        return fixture.copy()
+    ordenado = ordenar_partidos(fixture)
+    activos = ordenado[~ordenado["estado_orden"].eq(2)] if "estado_orden" in ordenado.columns else ordenado
+    if activos.empty:
+        activos = ordenado
+    return activos.head(limit).drop(columns=["estado_orden", "fecha_hora_orden"], errors="ignore").copy()
+
+
+def ordenar_partidos(fixture: pd.DataFrame) -> pd.DataFrame:
+    if fixture.empty:
+        return fixture.copy()
+    df = fixture.copy()
+    estado = df.get("estado", pd.Series("", index=df.index)).fillna("").astype(str).str.lower()
+    en_vivo = estado.isin(
+        ["en vivo", "inprogress", "1st_half", "2nd_half", "halftime", "extratime", "aet", "penalties"]
+    )
+    finalizado = estado.isin(["finalizado", "finished"])
+    fecha_texto = df.get("fecha_peru", "").astype(str) + " " + df.get("hora_peru", "").astype(str)
+    df["fecha_hora_orden"] = pd.to_datetime(fecha_texto, errors="coerce")
+    ahora = pd.Timestamp(datetime.now())
+    futuro = df["fecha_hora_orden"].isna() | (df["fecha_hora_orden"] >= ahora)
+    df["estado_orden"] = 3
+    df.loc[finalizado, "estado_orden"] = 2
+    df.loc[~finalizado & ~en_vivo & futuro, "estado_orden"] = 1
+    df.loc[en_vivo, "estado_orden"] = 0
+    return df.sort_values(["estado_orden", "fecha_hora_orden", "match_no"], na_position="last")
 
 
 def grupos_torneo(equipos: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
@@ -178,13 +331,15 @@ def get_stadium(sedes: pd.DataFrame, estadio: str, fixture: pd.DataFrame | None 
 
 
 def fixture_por_equipo(fixture: pd.DataFrame, seleccion: str) -> pd.DataFrame:
-    return fixture[
+    return ordenar_partidos(fixture[
         (fixture["equipo_local"] == seleccion) | (fixture["equipo_visitante"] == seleccion)
-    ].sort_values("match_no")
+    ]).drop(columns=["estado_orden", "fecha_hora_orden"], errors="ignore")
 
 
 def fixture_por_estadio(fixture: pd.DataFrame, estadio: str) -> pd.DataFrame:
-    return fixture[fixture["estadio"] == estadio].sort_values("match_no")
+    return ordenar_partidos(fixture[fixture["estadio"] == estadio]).drop(
+        columns=["estado_orden", "fecha_hora_orden"], errors="ignore"
+    )
 
 
 def fixture_por_ciudad(fixture: pd.DataFrame, ciudad: str) -> pd.DataFrame:
