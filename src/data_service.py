@@ -41,6 +41,17 @@ def normalizar_texto(valor: object) -> str:
 
 def cargar_datos(project_root: Path) -> dict[str, pd.DataFrame]:
     datos = cargar_o_procesar_mundial()
+    fotos_path = project_root / "data" / "mundial_2026" / "processed" / "fotos_jugadores.csv"
+    if fotos_path.exists() and not datos["fact_jugadores"].empty:
+        fotos = pd.read_csv(fotos_path, usecols=["id_jugador", "foto_url"])
+        fotos = fotos.drop_duplicates(subset=["id_jugador"], keep="last")
+        datos["fact_jugadores"] = datos["fact_jugadores"].merge(
+            fotos,
+            on="id_jugador",
+            how="left",
+        )
+    elif "foto_url" not in datos["fact_jugadores"].columns:
+        datos["fact_jugadores"]["foto_url"] = ""
     equipos_path = project_root / "data" / "processed" / "equipos_procesado.csv"
     enfrentamientos_path = project_root / "data" / "processed" / "enfrentamientos_procesado.csv"
     datos["rendimiento_companero"] = (

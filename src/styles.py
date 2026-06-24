@@ -603,6 +603,26 @@ def apply_global_styles() -> None:
             background: #E8EEF7;
         }
 
+        .player-photo {
+            width: 46px;
+            height: 46px;
+            display: grid;
+            place-items: center;
+            flex: 0 0 46px;
+            border: 2px solid #FFFFFF;
+            border-radius: 50%;
+            background: #E8EEF7;
+            color: var(--ink);
+            object-fit: cover;
+            object-position: center top;
+            box-shadow: 0 3px 10px rgba(15, 35, 65, .14);
+        }
+
+        .player-photo-empty svg {
+            width: 20px;
+            height: 20px;
+        }
+
         .player-row strong {
             display: block;
             color: var(--ink);

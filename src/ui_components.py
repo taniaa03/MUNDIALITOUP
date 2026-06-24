@@ -351,8 +351,17 @@ def player_rows(jugadores: pd.DataFrame, limit: int = 12) -> str:
         return '<div class="empty-state">No hay jugadores para este filtro.</div>'
     rows = []
     for _, row in jugadores.head(limit).iterrows():
+        foto_url = str(row.get("foto_url", "")).strip()
+        if foto_url and foto_url.lower() != "nan":
+            foto = (
+                f'<img class="player-photo" src="{escape(foto_url, quote=True)}" '
+                f'alt="Foto de {escape(str(row["jugador_nombre_limpio"]), quote=True)}" '
+                f'loading="lazy" referrerpolicy="no-referrer">'
+            )
+        else:
+            foto = f'<div class="player-photo player-photo-empty">{position_icon(str(row.get("posicion", "")))}</div>'
         rows.append(
-            f'<div class="player-row"><div class="pos-icon">{position_icon(str(row.get("posicion", "")))}</div>'
+            f'<div class="player-row">{foto}'
             f'<div><strong>{escape(str(row["jugador_nombre_limpio"]))}</strong>'
             f'<span>{escape(str(row["posicion_nombre"]))} | {escape(str(row["club_limpio"]))}</span></div></div>'
         )

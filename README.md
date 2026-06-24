@@ -48,6 +48,23 @@ selecciones, los jugadores y las sedes del Mundial 2026.
 - HTML y CSS
 - OpenPyXL
 
+## Fotos de jugadores
+
+Las fotos se consultan mediante la API gratuita de TheSportsDB y se guardan
+en un CSV local para no consumir solicitudes cada vez que se abre la página.
+
+```powershell
+# Descargar las fotos de una selección
+venv\Scripts\python.exe API.PY --seleccion Argentina
+
+# Descargar las fotos de todas las selecciones
+venv\Scripts\python.exe API.PY --todos
+```
+
+El plan gratuito permite 30 solicitudes por minuto. El proceso completo puede
+tardar alrededor de 45 minutos para 1,248 jugadores y puede continuarse si se
+interrumpe, porque omite automáticamente los jugadores ya consultados.
+
 ## Estructura del proyecto
 
 ```text
