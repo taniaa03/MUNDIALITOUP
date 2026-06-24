@@ -196,17 +196,6 @@ La aplicacion estara disponible normalmente en:
 http://localhost:8501
 ```
 
-## Division sugerida para cinco integrantes
-
-1. Procesamiento, limpieza y validacion de datos.
-2. Portada, resumen general y recursos visuales.
-3. Graficos y panel de indicadores.
-4. Fixture, filtros y previa de partidos.
-5. Perfiles de paises, sedes, documentacion y pruebas.
-
-Cada integrante debe trabajar en una rama propia y crear un commit con cambios
-relacionados exclusivamente con su responsabilidad.
-
 ## Fuentes de referencia
 
 - FIFA Squad Lists: planteles y selecciones.
